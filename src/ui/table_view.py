@@ -3,9 +3,7 @@ import pandas as pd
 from dataclasses import asdict
 
 def render_portfolio_table(portfolio: list):
-    """Отрисовывает таблицу с контрактами по центру экрана."""
-    st.subheader(f"💼 Активы в портфеле ({len(portfolio)})")
-    
+    """Отрисовывает таблицу с контрактами."""
     if not portfolio:
         st.info("В портфеле пока нет контрактов. Используйте боковую панель для добавления.")
         return
