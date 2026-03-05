@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from dataclasses import asdict
+from instruments.FXForward import CurrencyForwardContract
+from instruments.FXSwap import CurrencySwapContract
 
 def render_portfolio_table(portfolio: list):
     """Отрисовывает таблицу с контрактами."""
@@ -8,34 +9,72 @@ def render_portfolio_table(portfolio: list):
         st.info("В портфеле пока нет контрактов. Используйте боковую панель для добавления.")
         return
 
-    # Преобразуем список dataclass в DataFrame
-    data = [asdict(c) for c in portfolio]
-    df = pd.DataFrame(data)
-
-    # Оставляем только важные колонки для пользователя
-    columns_to_show = {
-        'instrument_id': 'ID',
-        'currency_pair': 'Валютная пара',
-        'direction': 'Направление',
-        'notional': 'Номинал',
-        'forward_rate': 'Форвардный курс',
-        'start_date': 'Дата платежа',
+    # Подготавливаем данные для отображения
+    rows = []
+    for instrument in portfolio:
+        row = {
+            'ID': instrument.instrument_id,
+            'Тип': 'Форвард' if isinstance(instrument, CurrencyForwardContract) else 'Своп',
+            'Валютная пара': instrument.currency_pair.value if hasattr(instrument.currency_pair, 'value') else instrument.currency_pair,
+            'Направление': instrument.direction.value if hasattr(instrument.direction, 'value') else instrument.direction,
+            'Номинал': instrument.notional,
+            'Дата начала': instrument.start_date.date() if hasattr(instrument.start_date, 'date') else instrument.start_date,
+            'Дата окончания': instrument.end_date.date() if hasattr(instrument.end_date, 'date') else instrument.end_date,
+        }
+        
+        # Добавляем специфичные поля
+        if isinstance(instrument, CurrencyForwardContract):
+            row['Форвардный курс'] = instrument.forward_rate
+            row['Тип расчета'] = 'NDF' if instrument.is_ndf else 'Поставочный'
+        elif isinstance(instrument, CurrencySwapContract):
+            row['Курс спот'] = instrument.spot_rate
+            row['Swap points'] = instrument.swap_points
+        
+        rows.append(row)
+    
+    df = pd.DataFrame(rows)
+    
+    # Настройка отображения
+    column_config = {
+        "ID": st.column_config.TextColumn("ID", width="medium"),
+        "Тип": st.column_config.TextColumn("Тип", width="small"),
+        "Валютная пара": st.column_config.TextColumn("Пара", width="small"),
+        "Направление": st.column_config.TextColumn("Напр.", width="small"),
+        "Номинал": st.column_config.NumberColumn("Номинал", format="%.2f"),
+        "Дата начала": st.column_config.DateColumn("Начало", format="DD.MM.YYYY"),
+        "Дата окончания": st.column_config.DateColumn("Окончание", format="DD.MM.YYYY"),
     }
     
-    df_display = df[columns_to_show.keys()].rename(columns=columns_to_show)
+    # Добавляем специфичные колонки в конфиг
+    if 'Форвардный курс' in df.columns:
+        column_config["Форвардный курс"] = st.column_config.NumberColumn("Fwd курс", format="%.4f")
+    if 'Тип расчета' in df.columns:
+        column_config["Тип расчета"] = st.column_config.TextColumn("Расчет", width="small")
+    if 'Курс спот' in df.columns:
+        column_config["Курс спот"] = st.column_config.NumberColumn("Спот", format="%.4f")
+    if 'Swap points' in df.columns:
+        column_config["Swap points"] = st.column_config.NumberColumn("Пункты", format="%.2f")
 
-    # Настройка отображения (стилизация)
     st.dataframe(
-        df_display,
+        df,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "Форвардный курс": st.column_config.NumberColumn(format="%.4f"),
-            "Дата платежа": st.column_config.DateColumn(format="DD.MM.YYYY"),
-        }
+        column_config=column_config
     )
 
     # Кнопка быстрой очистки
-    if st.button("🗑️ Очистить весь портфель"):
-        st.session_state.portfolio = []
-        st.rerun()
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("🗑️ Очистить портфель", type="primary"):
+            st.session_state.portfolio = []
+            st.rerun()
+    
+    with col2:
+        if st.button("📊 Экспорт в CSV"):
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Скачать CSV",
+                data=csv,
+                file_name="portfolio.csv",
+                mime="text/csv",
+            )

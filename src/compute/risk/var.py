@@ -20,7 +20,7 @@ def historical(ticker, horizon=1, confidence_level=0.95, window=252) -> tuple[pd
     :param window: количество дней в истории.
     :return: Pnl и значение VaR .
     """
-    returns = data_manager.get_data(ticker="USDRUB", ctype="currency", days=window)
+    returns = data_manager.get_data(ticker, ctype="currency", days=window)
     pnl = to_pnl(returns)
     if len(pnl) < window:
         data = pnl.tail(window)
@@ -39,7 +39,7 @@ def parametric(ticker, horizon=1, confidence_level=0.95, window=252) -> float:
     """
     Параметрический VaR по формуле: -Mean + Std * Z-score
     """
-    returns = data_manager.get_data(ticker="USDRUB", ctype="currency", days=window)
+    returns = data_manager.get_data(ticker, ctype="currency", days=window)
     pnl = to_pnl(returns)
     z_score = norm.ppf(confidence_level)
     var_1d = -pnl.mean() + pnl.std() * z_score

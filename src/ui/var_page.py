@@ -25,7 +25,7 @@ if selected_id:
     st.divider()
     
     if type_of_var == "Исторический":
-        pnl, var_cutoff = var.historical(selected_id, horizon=horizon, confidence_level=conf_level, window=window)
+        pnl, var_cutoff = var.historical("USDRUB" if selected_id.find("FX") else "CNYRUB", horizon=horizon, confidence_level=conf_level, window=window)
         var_index = round(len(pnl) * (1 - conf_level))
 
         # Создаем гистограмму распределения PnL
