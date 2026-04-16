@@ -305,6 +305,6 @@ def portfolio_ivar(
                 window=window,
                 horizon=horizon,
             )
-            var_without = sub_result[recommended_var_type]
+            var_without = sub_result[f"{recommended_var_type}_var"]
         result[inst.instrument_id] = var_full - var_without
     return result

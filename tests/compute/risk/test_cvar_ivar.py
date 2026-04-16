@@ -68,9 +68,9 @@ from compute.risk.var import portfolio_ivar
 def _mock_result(div=10.0, undiv=12.0, uncorr=8.0, ids=('A', 'B')):
     """Создаёт заглушку возвращаемого значения portfolio_historical/parametric."""
     return {
-        'diversified': div,
-        'undiversified': undiv,
-        'uncorrelated': uncorr,
+        'diversified_var': div,
+        'undiversified_var': undiv,
+        'uncorrelated_var': uncorr,
         'individual_vars': {iid: 5.0 for iid in ids},
         'pnl_matrix': pd.DataFrame(),
         'corr_matrix': pd.DataFrame(),
