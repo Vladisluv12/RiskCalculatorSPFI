@@ -140,3 +140,9 @@ def test_portfolio_ivar_single_instrument_gives_full_var():
         mock_hist.assert_not_called()  # пустой подпортфель → без вызова
 
     assert result['A'] == pytest.approx(5.0)
+
+def test_compute_cvar_raises_on_missing_var_key():
+    """ValueError если individual_vars не покрывает все колонки pnl_matrix."""
+    pnl = pd.DataFrame({'A': [0.01, -0.02, 0.03], 'B': [0.02, -0.01, 0.01]})
+    with pytest.raises(ValueError, match="VaR"):
+        compute_cvar(pnl, {'A': 0.05})  # 'B' отсутствует
