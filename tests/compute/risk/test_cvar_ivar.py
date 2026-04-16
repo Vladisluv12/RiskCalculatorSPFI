@@ -57,3 +57,86 @@ def test_compute_cvar_sum_approximately_equals_portfolio_var():
     assert abs(cvar_sum - div_var) / div_var < 0.15, (
         f"Σ CVaR ({cvar_sum:.4f}) слишком далеко от div VaR ({div_var:.4f})"
     )
+
+
+from unittest.mock import patch, MagicMock
+from datetime import datetime
+
+from compute.risk.var import portfolio_ivar
+
+
+def _mock_result(div=10.0, undiv=12.0, uncorr=8.0, ids=('A', 'B')):
+    """Создаёт заглушку возвращаемого значения portfolio_historical/parametric."""
+    return {
+        'diversified': div,
+        'undiversified': undiv,
+        'uncorrelated': uncorr,
+        'individual_vars': {iid: 5.0 for iid in ids},
+        'pnl_matrix': pd.DataFrame(),
+        'corr_matrix': pd.DataFrame(),
+    }
+
+
+def _make_instrument(iid):
+    inst = MagicMock()
+    inst.instrument_id = iid
+    return inst
+
+
+def test_portfolio_ivar_two_instruments():
+    """IVaR_A = var_full - var_without_A, IVaR_B = var_full - var_without_B."""
+    inst_a = _make_instrument('A')
+    inst_b = _make_instrument('B')
+    instruments = [inst_a, inst_b]
+    var_full = 10.0
+
+    # без A: осталось [B] → diversified = 7.0
+    # без B: осталось [A] → diversified = 6.0
+    side_effects = [_mock_result(div=7.0, ids=('B',)), _mock_result(div=6.0, ids=('A',))]
+
+    start = datetime(2024, 1, 1)
+    end = datetime(2024, 12, 31)
+
+    with patch('compute.risk.var.portfolio_historical', side_effect=side_effects) as mock_hist:
+        result = portfolio_ivar(
+            dataProvider=None,
+            instruments=instruments,
+            calc_start=start,
+            calc_end=end,
+            confidence_level=0.95,
+            window=252,
+            horizon=1,
+            method='historical',
+            recommended_var_type='diversified',
+            var_full=var_full,
+        )
+        assert mock_hist.call_count == 2
+
+    assert result['A'] == pytest.approx(10.0 - 7.0)
+    assert result['B'] == pytest.approx(10.0 - 6.0)
+
+
+def test_portfolio_ivar_single_instrument_gives_full_var():
+    """Портфель из 1 инструмента: подпортфель без него пуст → IVaR = var_full."""
+    inst_a = _make_instrument('A')
+    var_full = 5.0
+
+    start = datetime(2024, 1, 1)
+    end = datetime(2024, 12, 31)
+
+    with patch('compute.risk.var.portfolio_historical') as mock_hist:
+        result = portfolio_ivar(
+            dataProvider=None,
+            instruments=[inst_a],
+            calc_start=start,
+            calc_end=end,
+            confidence_level=0.95,
+            window=252,
+            horizon=1,
+            method='historical',
+            recommended_var_type='diversified',
+            var_full=var_full,
+        )
+        mock_hist.assert_not_called()  # пустой подпортфель → без вызова
+
+    assert result['A'] == pytest.approx(5.0)

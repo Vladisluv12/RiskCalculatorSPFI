@@ -271,3 +271,40 @@ def portfolio_parametric(dataProvider: DataProvider, instruments: list, calc_sta
     undiversified_var = float(var_vec.sum())
     uncorrelated_var = float(np.sqrt((var_vec ** 2).sum()))
     return {'pnl_matrix': pnl_matrix, 'individual_vars': individual_vars, 'corr_matrix': corr_matrix, 'diversified_var': diversified_var, 'undiversified_var': undiversified_var, 'uncorrelated_var': uncorrelated_var}
+
+def portfolio_ivar(
+    dataProvider: DataProvider,
+    instruments: list,
+    calc_start: datetime,
+    calc_end: datetime,
+    confidence_level: float = 0.95,
+    window: int = 252,
+    horizon: int = 1,
+    method: str = 'historical',
+    recommended_var_type: str = 'diversified',
+    var_full: float = 0.0,
+) -> dict:
+    """
+    Incremental VaR: IVaR_i = VaR_portfolio_full - VaR_portfolio_without_i.
+    var_full передаётся снаружи (уже вычислен на странице), поэтому
+    функция делает ровно N вызовов приценщика (по одному на подпортфель).
+    """
+    _portfolio_fn = portfolio_historical if method == 'historical' else portfolio_parametric
+    result = {}
+    for i, inst in enumerate(instruments):
+        sub_instruments = [ins for j, ins in enumerate(instruments) if j != i]
+        if not sub_instruments:
+            var_without = 0.0
+        else:
+            sub_result = _portfolio_fn(
+                dataProvider,
+                sub_instruments,
+                calc_start,
+                calc_end,
+                confidence_level=confidence_level,
+                window=window,
+                horizon=horizon,
+            )
+            var_without = sub_result[recommended_var_type]
+        result[inst.instrument_id] = var_full - var_without
+    return result
