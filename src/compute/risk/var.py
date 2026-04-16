@@ -95,6 +95,9 @@ def compute_cvar(pnl_matrix: pd.DataFrame, individual_vars: dict) -> dict:
     относительно портфеля без данного инструмента.
     """
     portfolio_pnl = pnl_matrix.sum(axis=1)
+    missing = set(pnl_matrix.columns) - set(individual_vars.keys())
+    if missing:
+        raise ValueError(f'Отсутствуют VaR-значения для колонок: {missing}')
     result = {}
     for col in pnl_matrix.columns:
         rho = float(pnl_matrix[col].corr(portfolio_pnl))
