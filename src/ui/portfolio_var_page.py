@@ -345,6 +345,68 @@ try:
     )
     st.plotly_chart(fig_pnl, width="stretch")
 
+    # ──────────────────────────────────────────────
+    # IVaR и CVaR
+    # ──────────────────────────────────────────────
+    st.divider()
+    st.subheader("Вклад инструментов в риск портфеля")
+    st.latex(r"CVaR_i = \rho_{i,P} \cdot VaR_i, \quad \sum_i CVaR_i \approx VaR_{portfolio}")
+    st.latex(r"IVaR_i = VaR_{portfolio} - VaR_{portfolio \setminus i}")
+
+    recommended_var_value = {
+        "diversified": diversified_var,
+        "undiversified": undiversified_var,
+        "uncorrelated": uncorrelated_var,
+    }[recommended]
+    method_key = "historical" if type_of_var == "Исторический" else "parametric"
+
+    if st.button("Рассчитать IVaR и CVaR"):
+        with st.spinner("Расчёт..."):
+            cvar_dict = var.compute_cvar(pnl_matrix, individual_vars)
+            ivar_dict = var.portfolio_ivar(
+                data_provider,
+                var_instruments,
+                calc_start,
+                calc_end,
+                confidence_level=conf_level,
+                window=window,
+                horizon=int(horizon),
+                method=method_key,
+                recommended_var_type=recommended,
+                var_full=recommended_var_value,
+            )
+
+        contrib_rows = []
+        for iid, var_i in individual_vars.items():
+            cvar_i = cvar_dict.get(iid, 0.0)
+            ivar_i = ivar_dict.get(iid, 0.0)
+            contrib_rows.append({
+                "Инструмент": iid,
+                "VaR_i": var_i,
+                "CVaR_i": cvar_i,
+                "CVaR_i %": cvar_i / recommended_var_value * 100 if recommended_var_value else 0.0,
+                "IVaR_i": ivar_i,
+                "IVaR_i %": ivar_i / recommended_var_value * 100 if recommended_var_value else 0.0,
+            })
+
+        contrib_df = pd.DataFrame(contrib_rows).set_index("Инструмент")
+        st.dataframe(
+            contrib_df.style.format({
+                "VaR_i": "{:.4f}",
+                "CVaR_i": "{:.4f}",
+                "CVaR_i %": "{:.1f}%",
+                "IVaR_i": "{:.4f}",
+                "IVaR_i %": "{:.1f}%",
+            }),
+            width="stretch",
+        )
+
+        cvar_sum = sum(cvar_dict.values())
+        st.caption(
+            f"Σ CVaR_i = {cvar_sum:.4f}  ≈  "
+            f"VaR_portfolio ({recommended}) = {recommended_var_value:.4f}"
+        )
+
 except Exception as exc:
     st.error(f"Ошибка расчета VaR портфеля: {exc.__class__.__name__}: {exc}")
     with st.expander("Посмотреть детали ошибки"):
