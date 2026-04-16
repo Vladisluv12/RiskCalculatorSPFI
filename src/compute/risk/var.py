@@ -1,47 +1,245 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import norm
-import utils.data_manager as data_manager
+from datetime import datetime
+from compute.pricers.CurrencySwapPricer import CurrencySwapPricer
+from compute.pricers.ForwardPricer import ForwardPricer
+from instruments.BaseInstrument import BaseInstrument
+from instruments.FXForward import CurrencyForwardContract
+from instruments.FXSwap import CurrencySwapContract
+from utils.DataProvider import DataProvider
 
 
 def to_pnl(returns):
-    """
-    Преобразует цены в доходности (PnL).
-    """
-    return returns.pct_change().dropna()
-
-def historical(ticker, horizon=1, confidence_level=0.95, window=252) -> tuple[pd.DataFrame, float]:
-    """
-    Расчет VaR историческим методом.
-
-    :param ticker: Тикер инструмента.
-    :param horizon: Временной горизонт в днях.
-    :param confidence_level: Доверительный интервал (0.95, 0.99).
-    :param window: количество дней в истории.
-    :return: Pnl и значение VaR .
-    """
-    returns = data_manager.get_data(ticker, ctype="currency", days=window)
-    pnl = to_pnl(returns)
-    if len(pnl) < window:
-        data = pnl.tail(window)
+    """\n    Преобразует цены в доходности (PnL).\n    """
+    if returns.empty:
+        return pd.DataFrame(dtype=float)
     else:
-        raise ValueError("Недостаточно данных для выбранного окна.")
+        return returns.pct_change().dropna()
 
-    scaled_returns = data * np.sqrt(horizon)
-    scaled_returns = scaled_returns.sort_values(by='curs').reset_index(drop=True)
+
+def _resolve_target_column(df: pd.DataFrame) -> str:
+    if 'price' in df.columns:
+        return 'price'
+    else:
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) == 0:
+            raise ValueError('В данных нет числовых колонок для расчета VaR.')
+        else:
+            return numeric_cols[0]
+
+
+def historical(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level=0.95, window=252) -> tuple[pd.DataFrame, float]:
+    """\n    Расчет VaR историческим методом.\n\n    :param instrument: Инструмент.\n    :param calc_start: Начальная дата для расчета.\n    :param calc_end: Конечная дата для расчета.\n    :param confidence_level: Доверительный интервал (0.95, 0.99).\n    :param window: количество дней в истории.\n    :return: Pnl и значение VaR .\n    """
+    returns = pd.DataFrame()
+    if isinstance(instrument, CurrencyForwardContract):
+        fxPricer = ForwardPricer(365)
+        returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    else:
+        if isinstance(instrument, CurrencySwapContract):
+            swapPricer = CurrencySwapPricer(365)
+            returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    if returns.empty:
+        raise ValueError('Не удалось получить историю PV для расчета исторического VaR.')
+    else:
+        pnl = to_pnl(returns)
+        if pnl.empty:
+            raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
+        else:
+            data = pnl.tail(min(window, len(pnl)))
+            horizon_days = max(1, (calc_end - calc_start).days)
+            scaled_returns = data * np.sqrt(horizon_days)
+            target_col = _resolve_target_column(scaled_returns)
+            scaled_returns = scaled_returns.sort_values(by=target_col).reset_index(drop=True)
+            alpha = 1 - confidence_level
+            var = scaled_returns[target_col].quantile(alpha)
+            return (scaled_returns, abs(float(var)))
+
+
+def parametric(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level=0.95, window=252) -> float:
+    """\n    Параметрический VaR по формуле: -Mean + Std * Z-score\n    """
+    returns = pd.DataFrame()
+    if isinstance(instrument, CurrencyForwardContract):
+        fxPricer = ForwardPricer(365)
+        returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    else:
+        if isinstance(instrument, CurrencySwapContract):
+            swapPricer = CurrencySwapPricer(365)
+            returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    if returns.empty:
+        raise ValueError('Не удалось получить историю PV для расчета параметрического VaR.')
+    else:
+        pnl = to_pnl(returns)
+        if pnl.empty:
+            raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
+        else:
+            data = pnl.tail(min(window, len(pnl)))
+            target_col = _resolve_target_column(data)
+            pnl_series = data[target_col]
+            z_score = norm.ppf(confidence_level)
+            var_1d = -pnl_series.mean() + pnl_series.std() * z_score
+            horizon_days = max(1, (calc_end - calc_start).days)
+            var_h = var_1d * np.sqrt(horizon_days)
+            if np.isnan(var_h):
+                raise ValueError('Получен NaN при расчете параметрического VaR. Проверьте входные данные.')
+            else:
+                return abs(float(var_h))
+def historical_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252) -> float:
+    """
+    ES историческим методом (Basel III): среднее по хвосту PnL ниже VaR-отсечки.
+    ES = |mean(PnL | PnL ≤ Q_α)|
+    """
+    pnl_series = _get_pnl_series(dataProvider, instrument, calc_start, calc_end, window)
+    horizon_days = max(1, (calc_end - calc_start).days)
+    pnl_scaled = pnl_series * np.sqrt(horizon_days)
     alpha = 1 - confidence_level
-    var = scaled_returns.quantile(alpha)
+    var_cutoff = float(pnl_scaled.quantile(alpha))
+    tail = pnl_scaled[pnl_scaled <= var_cutoff]
+    if tail.empty:
+        raise ValueError('Хвост PnL пуст — недостаточно данных для расчёта ES.')
+    return abs(float(tail.mean()))
 
-    return scaled_returns, var.abs().iloc[0]
 
-
-def parametric(ticker, horizon=1, confidence_level=0.95, window=252) -> float:
+def parametric_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252) -> float:
     """
-    Параметрический VaR по формуле: -Mean + Std * Z-score
+    Параметрический ES по Basel III (нормальное распределение):
+    ES = (-μ + σ · φ(z_α) / α) · √horizon,
+    где α = 1 - confidence_level, z_α = norm.ppf(α), φ — PDF нормального распределения.
     """
-    returns = data_manager.get_data(ticker, ctype="currency", days=window)
-    pnl = to_pnl(returns)
+    pnl_series = _get_pnl_series(dataProvider, instrument, calc_start, calc_end, window)
+    horizon_days = max(1, (calc_end - calc_start).days)
+    alpha = 1 - confidence_level
+    z_alpha = norm.ppf(alpha)
+    es_1d = -pnl_series.mean() + pnl_series.std() * norm.pdf(z_alpha) / alpha
+    es_h = float(es_1d) * np.sqrt(horizon_days)
+    if np.isnan(es_h):
+        raise ValueError('Получен NaN при расчёте параметрического ES. Проверьте входные данные.')
+    return abs(float(es_h))
+
+
+def portfolio_historical_es(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252, horizon: int = 1) -> float:
+    """
+    Исторический ES для портфеля: ES по агрегированному PnL (сумма позиций).
+    """
+    series_list = [_get_pnl_series(dataProvider, inst, calc_start, calc_end, window) for inst in instruments]
+    pnl_matrix = _deduplicate_columns(pd.concat(series_list, axis=1).dropna())
+    if pnl_matrix.empty:
+        raise ValueError('Нет общих дат для расчёта ES портфеля.')
+    portfolio_pnl = pnl_matrix.sum(axis=1) * np.sqrt(max(1, horizon))
+    alpha = 1 - confidence_level
+    var_cutoff = float(portfolio_pnl.quantile(alpha))
+    tail = portfolio_pnl[portfolio_pnl <= var_cutoff]
+    if tail.empty:
+        raise ValueError('Хвост PnL портфеля пуст — недостаточно данных для расчёта ES.')
+    return abs(float(tail.mean()))
+
+
+def portfolio_parametric_es(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252, horizon: int = 1) -> float:
+    """
+    Параметрический ES для портфеля по Basel III.
+    """
+    series_list = [_get_pnl_series(dataProvider, inst, calc_start, calc_end, window) for inst in instruments]
+    pnl_matrix = _deduplicate_columns(pd.concat(series_list, axis=1).dropna())
+    if pnl_matrix.empty:
+        raise ValueError('Нет общих дат для расчёта ES портфеля.')
+    portfolio_pnl = pnl_matrix.sum(axis=1)
+    alpha = 1 - confidence_level
+    z_alpha = norm.ppf(alpha)
+    es_1d = -portfolio_pnl.mean() + portfolio_pnl.std() * norm.pdf(z_alpha) / alpha
+    es_h = float(es_1d) * np.sqrt(max(1, horizon))
+    if np.isnan(es_h):
+        raise ValueError('NaN при расчёте параметрического ES портфеля.')
+    return abs(float(es_h))
+
+
+def _deduplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Делает имена колонок уникальными, добавляя суффикс _2, _3, ... при дублях."""
+    seen: dict = {}
+    new_cols = []
+    for col in df.columns:
+        if col not in seen:
+            seen[col] = 1
+            new_cols.append(col)
+        else:
+            seen[col] += 1
+            new_cols.append(f"{col}_{seen[col]}")
+    df = df.copy()
+    df.columns = new_cols
+    return df
+
+
+def _get_pv_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:
+    """Возвращает сырой ряд PV (без преобразований), последние window точек."""
+    returns = pd.DataFrame()
+    if isinstance(instrument, CurrencyForwardContract):
+        returns = ForwardPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    elif isinstance(instrument, CurrencySwapContract):
+        returns = CurrencySwapPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    if returns.empty:
+        raise ValueError(f'Не удалось получить историю PV для {instrument.instrument_id}.')
+    target_col = _resolve_target_column(returns)
+    return returns[target_col].tail(min(window, len(returns))).rename(instrument.instrument_id)
+
+
+def _get_pnl_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:
+    """Возвращает pct_change PnL-серию для одного инструмента (используется в ES и individual VaR)."""
+    pv = _get_pv_series(dataProvider, instrument, calc_start, calc_end, window)
+    pnl = pv.pct_change().dropna()
+    if pnl.empty:
+        raise ValueError(f'История доходностей пуста для {instrument.instrument_id}.')
+    return pnl
+
+
+def portfolio_historical(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float=0.95, window: int=252, horizon: int=1) -> dict:
+    """\n    Исторический VaR для портфеля.\n\n    Возвращает словарь с ключами:\n      pnl_matrix       — DataFrame, столбец = инструмент\n      individual_vars  — dict {id: VaR}\n      corr_matrix      — матрица корреляций\n      diversified_var  — sqrt(VaR^T · R · VaR)\n      undiversified_var — sum(VaR_i)\n      uncorrelated_var  — sqrt(sum(VaR_i^2))\n    """
+    pv_list = []
+    for inst in instruments:
+        pv_list.append(_get_pv_series(dataProvider, inst, calc_start, calc_end, window))
+    pv_matrix = _deduplicate_columns(pd.concat(pv_list, axis=1).dropna())
+    if pv_matrix.empty:
+        raise ValueError('Нет общих дат для построения матрицы PnL портфеля.')
+
+    # pct_change — для VaR (относительные доходности)
+    pnl_matrix = pv_matrix.pct_change().dropna()
+    # diff — для корреляции (абсолютные изменения PV, не искажённые делением на ≈0)
+    diff_matrix = pv_matrix.diff().dropna()
+
+    scale = np.sqrt(max(1, horizon))
+    pnl_matrix = pnl_matrix * scale
+    alpha = 1 - confidence_level
+    individual_vars = {col: abs(float(pnl_matrix[col].quantile(alpha))) for col in pnl_matrix.columns}
+    corr_matrix = diff_matrix.corr()
+    var_vec = np.array([individual_vars[col] for col in pnl_matrix.columns])
+    diversified_var = float(np.sqrt(var_vec @ corr_matrix.values @ var_vec))
+    undiversified_var = float(var_vec.sum())
+    uncorrelated_var = float(np.sqrt((var_vec ** 2).sum()))
+    return {'pnl_matrix': pnl_matrix, 'individual_vars': individual_vars, 'corr_matrix': corr_matrix, 'diversified_var': diversified_var, 'undiversified_var': undiversified_var, 'uncorrelated_var': uncorrelated_var}
+
+
+def portfolio_parametric(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float=0.95, window: int=252, horizon: int=1) -> dict:
+    """\n    Параметрический VaR для портфеля.\n\n    Возвращает тот же набор ключей, что portfolio_historical.\n    """
+    pv_list = []
+    for inst in instruments:
+        pv_list.append(_get_pv_series(dataProvider, inst, calc_start, calc_end, window))
+    pv_matrix = _deduplicate_columns(pd.concat(pv_list, axis=1).dropna())
+    if pv_matrix.empty:
+        raise ValueError('Нет общих дат для построения матрицы PnL портфеля.')
+
+    pnl_matrix = pv_matrix.pct_change().dropna()
+    diff_matrix = pv_matrix.diff().dropna()
+
     z_score = norm.ppf(confidence_level)
-    var_1d = -pnl.mean() + pnl.std() * z_score
-    var_h = var_1d * np.sqrt(horizon)
-    return var_h.abs().iloc[0]
+    scale = np.sqrt(max(1, horizon))
+    individual_vars = {}
+    for col in pnl_matrix.columns:
+        s = pnl_matrix[col]
+        v = abs((-s.mean() + s.std() * z_score) * scale)
+        if np.isnan(v):
+            raise ValueError(f'NaN при расчете параметрического VaR для {col}.')
+        individual_vars[col] = float(v)
+    corr_matrix = diff_matrix.corr()
+    var_vec = np.array([individual_vars[col] for col in pnl_matrix.columns])
+    diversified_var = float(np.sqrt(var_vec @ corr_matrix.values @ var_vec))
+    undiversified_var = float(var_vec.sum())
+    uncorrelated_var = float(np.sqrt((var_vec ** 2).sum()))
+    return {'pnl_matrix': pnl_matrix, 'individual_vars': individual_vars, 'corr_matrix': corr_matrix, 'diversified_var': diversified_var, 'undiversified_var': undiversified_var, 'uncorrelated_var': uncorrelated_var}

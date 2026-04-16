@@ -1,6 +1,9 @@
 import streamlit as st
+from datetime import date
+
 from ui.sidebar import render_add_instrument_form
 from ui.table_view import render_portfolio_table
+from utils.DataProvider import DataProvider
 
 st.title("💼 Управление портфелем")
 
@@ -9,6 +12,36 @@ if 'portfolio' not in st.session_state:
     st.session_state.portfolio = []
 if 'show_add_form' not in st.session_state:
     st.session_state.show_add_form = False
+if 'valuation_date' not in st.session_state:
+    st.session_state.valuation_date = date.today()
+if 'data_dir' not in st.session_state:
+    st.session_state.data_dir = "src/data"
+
+st.subheader("Параметры данных")
+cfg_col1, cfg_col2, cfg_col3 = st.columns([1, 2, 1])
+
+with cfg_col1:
+    valuation_date = st.date_input("Дата расчета", value=st.session_state.valuation_date)
+with cfg_col2:
+    data_dir = st.text_input("Папка с данными", value=st.session_state.data_dir)
+with cfg_col3:
+    st.write("")
+    st.write("")
+    apply_settings = st.button("Применить")
+
+if apply_settings:
+    try:
+        st.session_state.data_provider = DataProvider(input_dir=data_dir)
+        st.session_state.data_dir = data_dir
+        st.session_state.valuation_date = valuation_date
+        st.success("Параметры обновлены.")
+    except Exception as exc:
+        st.error(f"Не удалось обновить источник данных: {exc}")
+
+st.caption(f"Текущая дата расчета: {st.session_state.valuation_date}")
+st.caption(f"Текущая папка данных: {st.session_state.data_dir}")
+
+st.divider()
 
 # Кнопка добавления актива
 if st.button("➕ Добавить актив"):
@@ -34,5 +67,7 @@ if st.session_state.portfolio:
         if st.button("Перейти к расчету VaR"):
             st.session_state.selected_id = selected_id
             st.switch_page("ui/var_page.py")
+        if st.button("📊 Перейти к расчету VaR портфеля"):
+            st.switch_page("ui/portfolio_var_page.py")
 else:
     st.info("Портфель пуст")
