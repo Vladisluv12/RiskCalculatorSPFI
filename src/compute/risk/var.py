@@ -84,9 +84,34 @@ def parametric(dataProvider: DataProvider, instrument: BaseInstrument, calc_star
                 raise ValueError('Получен NaN при расчете параметрического VaR. Проверьте входные данные.')
             else:
                 return abs(float(var_h))
+
+
+def compute_cvar(pnl_matrix: pd.DataFrame, individual_vars: dict) -> dict:
+    """
+    Component VaR: CVaR_i = ρ(pnl_i, pnl_portfolio) · VaR_i.
+    Может быть отрицательным для хеджирующих позиций.
+    Σ CVaR_i ≈ диверсифицированный VaR портфеля.
+    Если портфельный PnL вырожден (нулевая дисперсия), корреляция считается
+    относительно портфеля без данного инструмента.
+    """
+    portfolio_pnl = pnl_matrix.sum(axis=1)
+    result = {}
+    for col in pnl_matrix.columns:
+        rho = float(pnl_matrix[col].corr(portfolio_pnl))
+        if np.isnan(rho):
+            other_cols = [c for c in pnl_matrix.columns if c != col]
+            if other_cols:
+                other_pnl = pnl_matrix[other_cols].sum(axis=1)
+                rho = float(pnl_matrix[col].corr(other_pnl))
+            if np.isnan(rho):
+                rho = 0.0
+        result[col] = rho * individual_vars[col]
+    return result
+
+
 def historical_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252) -> float:
     """
-    ES историческим методом (Basel III): среднее по хвосту PnL ниже VaR-отсечки.
+    ES историческим методом: среднее по хвосту PnL ниже VaR-отсечки.
     ES = |mean(PnL | PnL ≤ Q_α)|
     """
     pnl_series = _get_pnl_series(dataProvider, instrument, calc_start, calc_end, window)
@@ -102,7 +127,7 @@ def historical_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_s
 
 def parametric_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252) -> float:
     """
-    Параметрический ES по Basel III (нормальное распределение):
+    Параметрический ES(нормальное распределение):
     ES = (-μ + σ · φ(z_α) / α) · √horizon,
     где α = 1 - confidence_level, z_α = norm.ppf(α), φ — PDF нормального распределения.
     """
@@ -136,7 +161,7 @@ def portfolio_historical_es(dataProvider: DataProvider, instruments: list, calc_
 
 def portfolio_parametric_es(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252, horizon: int = 1) -> float:
     """
-    Параметрический ES для портфеля по Basel III.
+    Параметрический ES для портфеля
     """
     series_list = [_get_pnl_series(dataProvider, inst, calc_start, calc_end, window) for inst in instruments]
     pnl_matrix = _deduplicate_columns(pd.concat(series_list, axis=1).dropna())
