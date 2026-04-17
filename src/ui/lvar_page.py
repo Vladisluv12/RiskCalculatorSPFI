@@ -5,8 +5,6 @@ from datetime import datetime, time, timedelta
 import numpy as np
 import pandas as pd
 import streamlit as st
-from scipy.stats import norm
-
 import compute.risk.var as var
 from compute.risk.liquidity import LiquidityParams
 from instruments.FXForward import CurrencyForwardContract
@@ -130,7 +128,8 @@ if st.button("Рассчитать LVaR"):
 
         n = corr_matrix.shape[0]
         mask = ~np.eye(n, dtype=bool)
-        avg_abs_corr = float(np.mean(np.abs(corr_matrix.values[mask])))
+        avg_abs_corr_raw = np.mean(np.abs(corr_matrix.values[mask]))
+        avg_abs_corr = 0.0 if np.isnan(avg_abs_corr_raw) else float(avg_abs_corr_raw)
 
         if avg_abs_corr > 0.7:
             recommended = "undiversified"
