@@ -49,3 +49,22 @@ def estimate_spread_series(
     adv = params.avg_daily_volume.get(currency_pair)
     size_adj = 1.0 + 0.5 * (notional / adv) if adv else 1.0
     return base_spread * dir_adj * size_adj
+
+
+def compute_lc(
+    mid_pv: float,
+    spread_series: pd.Series,
+    z_alpha: float,
+) -> dict:
+    """
+    LC_normal   = 0.5 × |mid_pv| × s%_last
+    LC_stressed = 0.5 × |mid_pv| × (s%_last + z_alpha × σ_spread)
+
+    Возвращает {'normal': float, 'stressed': float}.
+    """
+    s_last = float(spread_series.iloc[-1])
+    sigma_spread = float(spread_series.std()) if len(spread_series) > 1 else 0.0
+    abs_pv = abs(mid_pv)
+    lc_normal = 0.5 * abs_pv * s_last
+    lc_stressed = 0.5 * abs_pv * (s_last + z_alpha * sigma_spread)
+    return {'normal': lc_normal, 'stressed': lc_stressed}

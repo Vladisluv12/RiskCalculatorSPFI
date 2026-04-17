@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from compute.risk.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series
+from compute.risk.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc
 from instruments.BaseInstrument import Direction
 
 
@@ -66,3 +66,27 @@ def test_spread_series_size_adj():
     sized = estimate_spread_series(returns, 1.0, Direction.BUY, 500.0, 'USD/RUB', params_with_adv)
     # size_adj = 1 + 0.5*(500/1000) = 1.25 > 1.0
     assert (sized > base).all()
+
+
+def test_compute_lc_normal_formula():
+    """LC_normal = 0.5 × |mid_pv| × s%_last."""
+    spread_series = pd.Series([0.02] * 20)
+    result = compute_lc(mid_pv=1_000.0, spread_series=spread_series, z_alpha=1.645)
+    assert result['normal'] == pytest.approx(0.5 * 1_000.0 * 0.02)
+
+
+def test_compute_lc_stressed_gt_normal():
+    """LC_stressed > LC_normal при ненулевой дисперсии спреда."""
+    rng = np.random.default_rng(7)
+    spread_series = pd.Series(rng.uniform(0.01, 0.04, 50))
+    result = compute_lc(mid_pv=1_000.0, spread_series=spread_series, z_alpha=1.645)
+    assert result['stressed'] > result['normal']
+
+
+def test_compute_lc_negative_pv():
+    """Берётся |mid_pv|: отрицательный PV даёт тот же LC."""
+    spread_series = pd.Series([0.02] * 20)
+    pos = compute_lc(mid_pv=1_000.0, spread_series=spread_series, z_alpha=1.645)
+    neg = compute_lc(mid_pv=-1_000.0, spread_series=spread_series, z_alpha=1.645)
+    assert pos['normal'] == pytest.approx(neg['normal'])
+    assert pos['stressed'] == pytest.approx(neg['stressed'])
