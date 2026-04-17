@@ -8,6 +8,7 @@ from instruments.BaseInstrument import BaseInstrument
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
+from compute.risk.liquidity import estimate_spread_series, compute_lc
 
 
 def to_pnl(returns):
@@ -331,8 +332,8 @@ def portfolio_lvar(
       lvar_stressed  — float: (VaR + LC_stressed) / t_factor
       t_factor       — float: √((1+T)(1+2T)/(6T))
     """
-    from compute.risk.liquidity import estimate_spread_series, compute_lc
-    from scipy.stats import norm
+    if T < 1:
+        raise ValueError(f"T must be >= 1, got {T}")
 
     z_alpha = float(norm.ppf(confidence_level))
     t_factor = float(np.sqrt((1 + T) * (1 + 2 * T) / (6 * T)))
