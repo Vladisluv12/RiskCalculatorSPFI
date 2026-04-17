@@ -34,9 +34,14 @@ portfolio_var_page = st.Page(
     title="VaR портфеля",
     icon="📊"
 )
+lvar_page = st.Page(
+    "ui/lvar_page.py",
+    title="LVaR портфеля",
+    icon="💧"
+)
 
 # Создаем навигацию
-pg = st.navigation([portfolio_page, var_page, portfolio_var_page])
+pg = st.navigation([portfolio_page, var_page, portfolio_var_page, lvar_page])
 
 # Запускаем приложение
 pg.run()
