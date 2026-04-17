@@ -378,15 +378,22 @@ def portfolio_lvar(
 
         lc = compute_lc(mid_pv=mid_pv, spread_series=spread_series, z_alpha=z_alpha)
         lc['s_pct'] = float(spread_series.iloc[-1])
+        lc['abs_pv'] = abs(mid_pv)
         instrument_lc[inst.instrument_id] = lc
 
     lc_total_normal = sum(v['normal'] for v in instrument_lc.values())
     lc_total_stressed = sum(v['stressed'] for v in instrument_lc.values())
+    total_abs_pv = sum(v.get('abs_pv', 0.0) for v in instrument_lc.values())
+
+    # var_portfolio — относительная величина (pct_change VaR); переводим в абсолютные рубли
+    var_portfolio_abs = var_portfolio * total_abs_pv
 
     return {
         'instrument_lc': instrument_lc,
         'lc_total': {'normal': lc_total_normal, 'stressed': lc_total_stressed},
-        'lvar_normal': (var_portfolio + lc_total_normal) / t_factor,
-        'lvar_stressed': (var_portfolio + lc_total_stressed) / t_factor,
+        'var_portfolio_abs': var_portfolio_abs,
+        'total_abs_pv': total_abs_pv,
+        'lvar_normal': (var_portfolio_abs + lc_total_normal) / t_factor,
+        'lvar_stressed': (var_portfolio_abs + lc_total_stressed) / t_factor,
         't_factor': t_factor,
     }

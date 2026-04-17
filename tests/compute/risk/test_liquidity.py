@@ -143,7 +143,7 @@ def test_portfolio_lvar_t1_factor_is_one():
 
     assert result['t_factor'] == pytest.approx(1.0)
     assert result['lvar_normal'] == pytest.approx(
-        0.05 + result['lc_total']['normal']
+        result['var_portfolio_abs'] + result['lc_total']['normal']
     )
     assert result['lvar_stressed'] >= result['lvar_normal']
 

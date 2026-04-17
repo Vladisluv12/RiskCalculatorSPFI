@@ -205,14 +205,21 @@ if st.button("Рассчитать LVaR"):
         # ──────────────────────────────────────────────
         st.subheader("LVaR портфеля")
         lc_total = lvar_result["lc_total"]
+        var_portfolio_abs = lvar_result["var_portfolio_abs"]
+        total_abs_pv = lvar_result["total_abs_pv"]
+
         mc1, mc2, mc3 = st.columns(3)
-        mc1.metric(f"VaR портфеля ({recommended})", f"{var_portfolio:.4f}")
-        mc2.metric("LC_total (normal)", f"{lc_total['normal']:.4f}")
-        mc3.metric("LC_total (stressed)", f"{lc_total['stressed']:.4f}")
+        mc1.metric(
+            f"VaR портфеля ({recommended})",
+            f"{var_portfolio_abs:,.2f}",
+            help=f"Относительный VaR: {var_portfolio:.4f} × |PV| {total_abs_pv:,.0f}",
+        )
+        mc2.metric("LC_total (normal)", f"{lc_total['normal']:,.2f}")
+        mc3.metric("LC_total (stressed)", f"{lc_total['stressed']:,.2f}")
 
         ml1, ml2, ml3 = st.columns(3)
-        ml1.metric("LVaR (normal)", f"{lvar_result['lvar_normal']:.4f}")
-        ml2.metric("LVaR (stressed)", f"{lvar_result['lvar_stressed']:.4f}")
+        ml1.metric("LVaR (normal)", f"{lvar_result['lvar_normal']:,.2f}")
+        ml2.metric("LVaR (stressed)", f"{lvar_result['lvar_stressed']:,.2f}")
         ml3.metric(f"T-фактор (T={T})", f"{lvar_result['t_factor']:.4f}")
 
         st.caption(
@@ -220,7 +227,8 @@ if st.button("Рассчитать LVaR"):
             f"Уровень: **{conf_level*100:.0f}%** | "
             f"Горизонт: **{horizon} дн.** | "
             f"Окно: **{window} дн.** | "
-            f"Рекомендован: **{recommended}**"
+            f"Рекомендован: **{recommended}** | "
+            f"|PV| портфеля: **{total_abs_pv:,.0f}**"
         )
 
     except Exception as exc:
