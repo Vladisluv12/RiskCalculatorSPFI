@@ -151,7 +151,9 @@ def portfolio_historical_es(dataProvider: DataProvider, instruments: list, calc_
     Исторический ES для портфеля: ES по агрегированному PnL (сумма позиций).
     """
     series_list = [_get_pnl_series(dataProvider, inst, calc_start, calc_end, window) for inst in instruments]
-    pnl_matrix = _deduplicate_columns(pd.concat(series_list, axis=1).dropna())
+    raw = pd.concat(series_list, axis=1)
+    raw = raw[~raw.index.duplicated(keep='last')]
+    pnl_matrix = _deduplicate_columns(raw).dropna()
     if pnl_matrix.empty:
         raise ValueError('Нет общих дат для расчёта ES портфеля.')
     portfolio_pnl = pnl_matrix.sum(axis=1) * np.sqrt(max(1, horizon))
@@ -168,7 +170,9 @@ def portfolio_parametric_es(dataProvider: DataProvider, instruments: list, calc_
     Параметрический ES для портфеля
     """
     series_list = [_get_pnl_series(dataProvider, inst, calc_start, calc_end, window) for inst in instruments]
-    pnl_matrix = _deduplicate_columns(pd.concat(series_list, axis=1).dropna())
+    raw = pd.concat(series_list, axis=1)
+    raw = raw[~raw.index.duplicated(keep='last')]
+    pnl_matrix = _deduplicate_columns(raw).dropna()
     if pnl_matrix.empty:
         raise ValueError('Нет общих дат для расчёта ES портфеля.')
     portfolio_pnl = pnl_matrix.sum(axis=1)
@@ -224,7 +228,9 @@ def portfolio_historical(dataProvider: DataProvider, instruments: list, calc_sta
     pv_list = []
     for inst in instruments:
         pv_list.append(_get_pv_series(dataProvider, inst, calc_start, calc_end, window))
-    pv_matrix = _deduplicate_columns(pd.concat(pv_list, axis=1).dropna())
+    raw = pd.concat(pv_list, axis=1)
+    raw = raw[~raw.index.duplicated(keep='last')]
+    pv_matrix = _deduplicate_columns(raw).dropna()
     if pv_matrix.empty:
         raise ValueError('Нет общих дат для построения матрицы PnL портфеля.')
 
@@ -250,7 +256,9 @@ def portfolio_parametric(dataProvider: DataProvider, instruments: list, calc_sta
     pv_list = []
     for inst in instruments:
         pv_list.append(_get_pv_series(dataProvider, inst, calc_start, calc_end, window))
-    pv_matrix = _deduplicate_columns(pd.concat(pv_list, axis=1).dropna())
+    raw = pd.concat(pv_list, axis=1)
+    raw = raw[~raw.index.duplicated(keep='last')]
+    pv_matrix = _deduplicate_columns(raw).dropna()
     if pv_matrix.empty:
         raise ValueError('Нет общих дат для построения матрицы PnL портфеля.')
 
