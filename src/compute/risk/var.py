@@ -377,6 +377,7 @@ def portfolio_lvar(
         )
 
         lc = compute_lc(mid_pv=mid_pv, spread_series=spread_series, z_alpha=z_alpha)
+        lc['s_pct'] = float(spread_series.iloc[-1])
         instrument_lc[inst.instrument_id] = lc
 
     lc_total_normal = sum(v['normal'] for v in instrument_lc.values())

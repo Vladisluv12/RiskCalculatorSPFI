@@ -181,11 +181,12 @@ if st.button("Рассчитать LVaR"):
         rows = []
         instrument_lc = lvar_result["instrument_lc"]
         for inst in supported:
-            lc = instrument_lc.get(inst.instrument_id, {'normal': 0.0, 'stressed': 0.0})
+            lc = instrument_lc.get(inst.instrument_id, {'normal': 0.0, 'stressed': 0.0, 's_pct': 0.0})
             rows.append({
                 "Инструмент": inst.instrument_id,
                 "Направление": inst.direction.value,
                 "Номинал": inst.notional,
+                "s% adj": lc.get('s_pct', 0.0),
                 "LC (normal)": lc['normal'],
                 "LC (stressed)": lc['stressed'],
             })
@@ -193,6 +194,7 @@ if st.button("Рассчитать LVaR"):
         st.dataframe(
             lc_df.style.format({
                 "Номинал": "{:,.0f}",
+                "s% adj": "{:.4%}",
                 "LC (normal)": "{:.4f}",
                 "LC (stressed)": "{:.4f}",
             }),
