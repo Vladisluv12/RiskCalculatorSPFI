@@ -39,6 +39,11 @@ class CurrencySwapPricer:
         quote_curve_data = dataProvider.get_curve_data(contract.quote_currency, calc_start - ddt, calc_end)
         currency_data = dataProvider.get_currency_data(contract.currency_pair.value.replace('/', ''), calc_start - ddt, calc_end)
 
+        # Дедупликация индексов до reindex — pandas не позволяет reindex при дублях дат
+        base_curve_data = base_curve_data[~base_curve_data.index.duplicated(keep='last')]
+        quote_curve_data = quote_curve_data[~quote_curve_data.index.duplicated(keep='last')]
+        currency_data = currency_data[~currency_data.index.duplicated(keep='last')]
+
         mask = (currency_data.index >= pd.to_datetime(calc_start - ddt)) & (currency_data.index <= pd.to_datetime(calc_end))
         period_data = currency_data.loc[mask].copy()
 
