@@ -312,7 +312,6 @@ def portfolio_ivar(
 
 
 def portfolio_lvar(
-    var_portfolio: float,
     instruments: list,
     dataProvider: DataProvider,
     calc_start: datetime,
@@ -339,6 +338,7 @@ def portfolio_lvar(
     t_factor = float(np.sqrt((1 + T) * (1 + 2 * T) / (6 * T)))
 
     instrument_lc: dict = {}
+    pv_series_list: list = []  # для расчёта абсолютного портфельного VaR
 
     for inst in instruments:
         pair_ticker = inst.currency_pair.value.replace('/', '')  # 'USDRUB'
@@ -367,6 +367,8 @@ def portfolio_lvar(
             instrument_lc[inst.instrument_id] = {'normal': 0.0, 'stressed': 0.0}
             continue
 
+        pv_series_list.append(pv_series)
+
         spread_series = estimate_spread_series(
             fx_returns=fx_returns,
             tenor_years=tenor_years,
@@ -385,8 +387,15 @@ def portfolio_lvar(
     lc_total_stressed = sum(v['stressed'] for v in instrument_lc.values())
     total_abs_pv = sum(v.get('abs_pv', 0.0) for v in instrument_lc.values())
 
-    # var_portfolio — относительная величина (pct_change VaR); переводим в абсолютные рубли
-    var_portfolio_abs = var_portfolio * total_abs_pv
+    # Абсолютный VaR портфеля — через diff() суммарного PV (а не pct_change).
+    # pct_change от MTM-переоценки форварда нестабилен когда PV близко к нулю.
+    if pv_series_list:
+        portfolio_pv = pd.concat(pv_series_list, axis=1).dropna().sum(axis=1)
+        portfolio_diff = portfolio_pv.diff().dropna().tail(window)
+        alpha = 1.0 - confidence_level
+        var_portfolio_abs = float(abs(np.percentile(portfolio_diff, alpha * 100)))
+    else:
+        var_portfolio_abs = 0.0
 
     return {
         'instrument_lc': instrument_lc,

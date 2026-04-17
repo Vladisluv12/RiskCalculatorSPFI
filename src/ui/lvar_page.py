@@ -55,7 +55,7 @@ st.subheader("Параметры ликвидности")
 lc1, lc2, lc3 = st.columns(3)
 with lc1:
     k = st.number_input("k (калибровка)", value=3.0, min_value=0.1, step=0.1,
-                         help="Коэффициент волатильность→спред. Дефолт 3.0 для российского рынка.")
+                         help="Коэффициент волатильность-спред")
     floor_spread = st.number_input("floor_spread (мин. спред)", value=0.001,
                                     min_value=0.0001, step=0.0001, format="%.4f",
                                     help="Минимальный спред (10 bps = 0.001).")
@@ -68,10 +68,10 @@ with lc2:
                                help="RiskMetrics: 0.94 для дневных данных.")
 with lc3:
     T = st.number_input("T (дней на ликвидацию)", value=1, min_value=1, max_value=30,
-                         help="Равномерный выход за T дней. T=1 → нет масштабирования.")
+                         help="Равномерный выход за T дней")
 
 st.subheader("Средний дневной объём торгов (ADV)")
-st.caption("Оставьте 0 чтобы не учитывать поправку на размер позиции.")
+st.caption("0, чтобы не учитывать поправку на размер позиции.")
 unique_pairs = sorted({inst.currency_pair.value for inst in supported})
 adv_cols = st.columns(max(len(unique_pairs), 1))
 raw_adv: dict = {}
@@ -154,7 +154,6 @@ if st.button("Рассчитать LVaR"):
 
         with st.spinner("Расчёт LVaR..."):
             lvar_result = var.portfolio_lvar(
-                var_portfolio=var_portfolio,
                 instruments=lvar_instruments,
                 dataProvider=data_provider,
                 calc_start=calc_start,
@@ -203,7 +202,7 @@ if st.button("Рассчитать LVaR"):
         # ──────────────────────────────────────────────
         # Метрики портфеля
         # ──────────────────────────────────────────────
-        st.subheader("LVaR портфеля")
+        st.subheader("LVaR портфеля (в абсолютных значениях)")
         lc_total = lvar_result["lc_total"]
         var_portfolio_abs = lvar_result["var_portfolio_abs"]
         total_abs_pv = lvar_result["total_abs_pv"]
@@ -212,7 +211,7 @@ if st.button("Рассчитать LVaR"):
         mc1.metric(
             f"VaR портфеля ({recommended})",
             f"{var_portfolio_abs:,.2f}",
-            help=f"Относительный VaR: {var_portfolio:.4f} × |PV| {total_abs_pv:,.0f}",
+            help=f"Абсолютный VaR. Относительный VaR: {var_portfolio:.4f}",
         )
         mc2.metric("LC_total (normal)", f"{lc_total['normal']:,.2f}")
         mc3.metric("LC_total (stressed)", f"{lc_total['stressed']:,.2f}")
@@ -227,7 +226,7 @@ if st.button("Рассчитать LVaR"):
             f"Уровень: **{conf_level*100:.0f}%** | "
             f"Горизонт: **{horizon} дн.** | "
             f"Окно: **{window} дн.** | "
-            f"Рекомендован: **{recommended}** | "
+            f"Выбран VaR: **{recommended}** | "
             f"|PV| портфеля: **{total_abs_pv:,.0f}**"
         )
 

@@ -130,7 +130,6 @@ def test_portfolio_lvar_t1_factor_is_one():
 
     with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
         result = portfolio_lvar(
-            var_portfolio=0.05,
             instruments=[_make_forward()],
             dataProvider=mock_dp,
             calc_start=datetime(2023, 1, 1),
@@ -162,13 +161,13 @@ def test_portfolio_lvar_t5_reduces_lvar():
 
     with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
         r1 = portfolio_lvar(
-            var_portfolio=0.05, instruments=[_make_forward()],
+            instruments=[_make_forward()],
             dataProvider=mock_dp, calc_start=datetime(2023, 1, 1),
             calc_end=datetime(2023, 12, 31), params=params,
             T=1, confidence_level=0.95, window=252,
         )
         r5 = portfolio_lvar(
-            var_portfolio=0.05, instruments=[_make_forward()],
+            instruments=[_make_forward()],
             dataProvider=mock_dp, calc_start=datetime(2023, 1, 1),
             calc_end=datetime(2023, 12, 31), params=params,
             T=5, confidence_level=0.95, window=252,
