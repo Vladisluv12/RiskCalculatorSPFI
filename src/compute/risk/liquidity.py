@@ -22,3 +22,30 @@ def estimate_ewma_vol(fx_returns: pd.Series, lambda_: float = 0.94) -> pd.Series
     """
     variance = fx_returns.pow(2).ewm(alpha=1.0 - lambda_, adjust=False).mean()
     return np.sqrt(variance)
+
+
+def estimate_spread_series(
+    fx_returns: pd.Series,
+    tenor_years: float,
+    direction: Direction,
+    notional: float,
+    currency_pair: str,
+    params: LiquidityParams,
+) -> pd.Series:
+    """
+    Эмулированная серия s%_adj(t) за исторический период.
+
+    s%(t)      = max(k × σ_ewma(t) × √tenor_years, floor_spread)
+    dir_adj    = (1 + α) если BUY, (1 − α) если SELL
+    size_adj   = 1 + 0.5 × (notional / ADV)  если ADV задан, иначе 1.0
+    s%_adj(t)  = s%(t) × dir_adj × size_adj
+    """
+    sigma_ewma = estimate_ewma_vol(fx_returns, params.lambda_)
+    base_spread = np.maximum(
+        params.k * sigma_ewma * np.sqrt(max(tenor_years, 1 / 365)),
+        params.floor_spread,
+    )
+    dir_adj = (1.0 + params.alpha) if direction == Direction.BUY else (1.0 - params.alpha)
+    adv = params.avg_daily_volume.get(currency_pair)
+    size_adj = 1.0 + 0.5 * (notional / adv) if adv else 1.0
+    return base_spread * dir_adj * size_adj

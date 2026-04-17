@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from compute.risk.liquidity import LiquidityParams, estimate_ewma_vol
+from compute.risk.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series
+from instruments.BaseInstrument import Direction
 
 
 def test_ewma_vol_positive():
@@ -28,3 +29,40 @@ def test_liquidity_params_defaults():
     assert params.alpha == 0.10
     assert params.lambda_ == 0.94
     assert params.avg_daily_volume == {}
+
+
+def test_spread_series_floor():
+    """При почти нулевой волатильности спред не падает ниже floor_spread."""
+    returns = pd.Series([0.0001] * 100)
+    params = LiquidityParams(k=3.0, floor_spread=0.002, alpha=0.0, lambda_=0.94)
+    result = estimate_spread_series(
+        fx_returns=returns, tenor_years=0.1,
+        direction=Direction.BUY, notional=100.0,
+        currency_pair='USD/RUB', params=params,
+    )
+    assert (result >= 0.002).all()
+
+
+def test_spread_series_buy_gt_sell():
+    """BUY-направление даёт больший спред, чем SELL (асимметрия рынка РФ)."""
+    rng = np.random.default_rng(42)
+    returns = pd.Series(rng.standard_normal(100) * 0.01)
+    params = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.10, lambda_=0.94)
+    buy = estimate_spread_series(returns, 1.0, Direction.BUY, 100.0, 'USD/RUB', params)
+    sell = estimate_spread_series(returns, 1.0, Direction.SELL, 100.0, 'USD/RUB', params)
+    assert (buy > sell).all()
+
+
+def test_spread_series_size_adj():
+    """Большой номинал относительно ADV увеличивает спред."""
+    rng = np.random.default_rng(0)
+    returns = pd.Series(rng.standard_normal(50) * 0.01)
+    params_no_adv = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.0, lambda_=0.94)
+    params_with_adv = LiquidityParams(
+        k=3.0, floor_spread=0.001, alpha=0.0, lambda_=0.94,
+        avg_daily_volume={'USD/RUB': 1_000.0},
+    )
+    base = estimate_spread_series(returns, 1.0, Direction.BUY, 500.0, 'USD/RUB', params_no_adv)
+    sized = estimate_spread_series(returns, 1.0, Direction.BUY, 500.0, 'USD/RUB', params_with_adv)
+    # size_adj = 1 + 0.5*(500/1000) = 1.25 > 1.0
+    assert (sized > base).all()
