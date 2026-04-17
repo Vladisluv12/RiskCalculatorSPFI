@@ -90,3 +90,89 @@ def test_compute_lc_negative_pv():
     neg = compute_lc(mid_pv=-1_000.0, spread_series=spread_series, z_alpha=1.645)
     assert pos['normal'] == pytest.approx(neg['normal'])
     assert pos['stressed'] == pytest.approx(neg['stressed'])
+
+
+from unittest.mock import MagicMock, patch
+from datetime import datetime
+
+from compute.risk.var import portfolio_lvar
+from compute.risk.liquidity import LiquidityParams
+from instruments.BaseInstrument import Direction, CurrencyPair
+from instruments.FXForward import CurrencyForwardContract
+
+
+def _make_forward(iid='FWD1', notional=1_000_000.0, direction=Direction.BUY):
+    return CurrencyForwardContract(
+        instrument_id=iid,
+        notional=notional,
+        direction=direction,
+        start_date=datetime(2024, 6, 1),
+        end_date=datetime(2024, 12, 31),
+        currency_pair=CurrencyPair.USD_RUB,
+        base_currency='USD',
+        quote_currency='RUB',
+        forward_rate=90.0,
+    )
+
+
+def test_portfolio_lvar_t1_factor_is_one():
+    """При T=1 делитель = 1.0 → LVaR_normal = VaR + LC_normal."""
+    rng = np.random.default_rng(0)
+    n = 252
+    dates = pd.date_range('2023-01-01', periods=n, freq='B')
+    mock_curs = pd.DataFrame({'curs': rng.normal(85, 1, n)}, index=dates)
+    mock_pv = pd.Series(rng.normal(50_000, 5_000, n), index=dates, name='FWD1')
+
+    mock_dp = MagicMock()
+    mock_dp.get_currency_data.return_value = mock_curs
+
+    params = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.10, lambda_=0.94)
+
+    with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
+        result = portfolio_lvar(
+            var_portfolio=0.05,
+            instruments=[_make_forward()],
+            dataProvider=mock_dp,
+            calc_start=datetime(2023, 1, 1),
+            calc_end=datetime(2023, 12, 31),
+            params=params,
+            T=1,
+            confidence_level=0.95,
+            window=252,
+        )
+
+    assert result['t_factor'] == pytest.approx(1.0)
+    assert result['lvar_normal'] == pytest.approx(
+        0.05 + result['lc_total']['normal']
+    )
+    assert result['lvar_stressed'] >= result['lvar_normal']
+
+
+def test_portfolio_lvar_t5_reduces_lvar():
+    """При T=5 LVaR_T < LVaR_T1 (знаменатель > 1)."""
+    rng = np.random.default_rng(1)
+    n = 252
+    dates = pd.date_range('2023-01-01', periods=n, freq='B')
+    mock_curs = pd.DataFrame({'curs': rng.normal(85, 1, n)}, index=dates)
+    mock_pv = pd.Series(rng.normal(50_000, 5_000, n), index=dates, name='FWD1')
+
+    mock_dp = MagicMock()
+    mock_dp.get_currency_data.return_value = mock_curs
+    params = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.10, lambda_=0.94)
+
+    with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
+        r1 = portfolio_lvar(
+            var_portfolio=0.05, instruments=[_make_forward()],
+            dataProvider=mock_dp, calc_start=datetime(2023, 1, 1),
+            calc_end=datetime(2023, 12, 31), params=params,
+            T=1, confidence_level=0.95, window=252,
+        )
+        r5 = portfolio_lvar(
+            var_portfolio=0.05, instruments=[_make_forward()],
+            dataProvider=mock_dp, calc_start=datetime(2023, 1, 1),
+            calc_end=datetime(2023, 12, 31), params=params,
+            T=5, confidence_level=0.95, window=252,
+        )
+
+    assert r5['lvar_normal'] < r1['lvar_normal']
+    assert r5['t_factor'] == pytest.approx(np.sqrt((1+5)*(1+10)/(6*5)))
