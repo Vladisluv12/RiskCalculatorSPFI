@@ -2,6 +2,7 @@ import traceback
 
 import streamlit as st
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 from dataclasses import replace
 from datetime import datetime, time, timedelta
@@ -10,6 +11,8 @@ import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
+from io.serializers import SERIALIZERS, FORMAT_LABELS
+from io.results_exporter import ResultsExporter
 render_report_sidebar()
 
 st.title("📉 Анализ рисков (VaR)")
@@ -173,6 +176,42 @@ if selected_id:
             mc1, mc2 = st.columns(2)
             mc1.metric("Рассчитанный VaR", f"{abs(var_cutoff):.4f}")
             mc2.metric("Рассчитанный ES", f"{abs(es_cutoff):.4f}" if not np.isnan(es_cutoff) else "—")
+
+            st.divider()
+
+            # ── Экспорт результатов ───────────────────────────────────────────
+            exp_col1, exp_col2 = st.columns([1, 2])
+            with exp_col1:
+                res_fmt = st.selectbox("Формат", FORMAT_LABELS, key="var_res_fmt")
+            with exp_col2:
+                st.write("")
+                st.write("")
+                results_data = {
+                    "pnl": pnl if type_of_var == "Исторический" else pd.DataFrame(),
+                    "var": float(abs(var_cutoff)) if not np.isnan(var_cutoff) else 0.0,
+                    "es": float(abs(es_cutoff)) if not np.isnan(es_cutoff) else 0.0,
+                }
+                serializer = SERIALIZERS[res_fmt]
+                raw_res = ResultsExporter(serializer).export(results_data)
+                st.download_button(
+                    label=f"Скачать результаты (.{serializer.file_extension})",
+                    data=raw_res,
+                    file_name=f"var_{selected_id}.{serializer.file_extension}",
+                    mime=serializer.mime_type,
+                )
+
+            # ── Добавить в отчёт ─────────────────────────────────────────────
+            rb = st.session_state.get("report_builder")
+            if rb is not None:
+                page_id = f"var_{selected_id}"
+                in_report = rb.has_section(page_id)
+                label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
+                if st.button(label, key="var_report_btn"):
+                    if in_report:
+                        rb.remove_section(page_id)
+                    else:
+                        rb.add_section(page_id, f"VaR: {selected_id}", results_data)
+                    st.rerun()
 
             st.divider()
             if st.button("Перейти к расчёту VaR портфеля"):
