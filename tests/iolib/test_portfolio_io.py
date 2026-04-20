@@ -5,11 +5,11 @@ from datetime import datetime
 from instruments.BaseInstrument import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
-from io.serializers.json_serializer import JsonSerializer
-from io.serializers.yaml_serializer import YamlSerializer
-from io.serializers.csv_serializer import CsvSerializer
-from io.serializers.excel_serializer import ExcelSerializer
-from io.portfolio_io import PortfolioImporter, PortfolioExporter
+from iolib.serializers.json_serializer import JsonSerializer
+from iolib.serializers.yaml_serializer import YamlSerializer
+from iolib.serializers.csv_serializer import CsvSerializer
+from iolib.serializers.excel_serializer import ExcelSerializer
+from iolib.portfolio_io import PortfolioImporter, PortfolioExporter
 
 
 FWD = CurrencyForwardContract(

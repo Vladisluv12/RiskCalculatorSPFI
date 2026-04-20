@@ -75,7 +75,7 @@ def render_swap_form():
 
 
 def render_report_sidebar() -> None:
-    from io.report_builder import ReportBuilder
+    from iolib.report_builder import ReportBuilder
     with st.sidebar:
         st.divider()
         rb: ReportBuilder = st.session_state.get("report_builder")

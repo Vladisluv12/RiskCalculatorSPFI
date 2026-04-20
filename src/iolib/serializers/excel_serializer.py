@@ -8,7 +8,7 @@ class ExcelSerializer(BaseSerializer):
     def serialize(self, data: Any) -> bytes:
         buf = io.BytesIO()
         if isinstance(data, dict):
-            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            with pd.ExcelWriter(buf) as writer:
                 for sheet_name, value in data.items():
                     if isinstance(value, pd.DataFrame):
                         value.to_excel(writer, sheet_name=str(sheet_name)[:31], index=True)

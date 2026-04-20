@@ -10,8 +10,8 @@ from compute.risk.liquidity import LiquidityParams
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
-from io.serializers import SERIALIZERS, FORMAT_LABELS
-from io.results_exporter import ResultsExporter
+from iolib.serializers import SERIALIZERS, FORMAT_LABELS
+from iolib.results_exporter import ResultsExporter
 render_report_sidebar()
 
 st.title("💧 LVaR (Liquidity-adjusted VaR)")

@@ -4,8 +4,8 @@ from datetime import date
 from ui.sidebar import render_add_instrument_form, render_report_sidebar
 from ui.table_view import render_portfolio_table
 from utils.DataProvider import DataProvider
-from io.serializers import SERIALIZERS, FORMAT_LABELS
-from io.portfolio_io import PortfolioImporter, PortfolioExporter
+from iolib.serializers import SERIALIZERS, FORMAT_LABELS
+from iolib.portfolio_io import PortfolioImporter, PortfolioExporter
 render_report_sidebar()
 
 st.title("💼 Управление портфелем")

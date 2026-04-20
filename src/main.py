@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import date
 
 from utils.DataProvider import DataProvider
+from iolib.report_builder import ReportBuilder
 from utils.bootstrap_test_data import bootstrap_test_data
 
 # Инициализация состояния (обязательно до навигации)
@@ -18,7 +19,6 @@ if 'data_provider' not in st.session_state:
 bootstrap_test_data(st.session_state)
 
 if 'report_builder' not in st.session_state:
-    from io.report_builder import ReportBuilder
     st.session_state.report_builder = ReportBuilder()
 
 # Определяем страницы

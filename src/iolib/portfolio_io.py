@@ -4,7 +4,7 @@ from typing import Any
 from instruments.BaseInstrument import BaseInstrument, Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
-from io.serializers.base import BaseSerializer
+from iolib.serializers.base import BaseSerializer
 
 _INSTRUMENT_TYPES = {"FXForward", "FXSwap"}
 

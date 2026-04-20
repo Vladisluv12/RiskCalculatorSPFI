@@ -3,10 +3,10 @@ import pytest
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from io.serializers.json_serializer import JsonSerializer
-from io.serializers.yaml_serializer import YamlSerializer
-from io.serializers.csv_serializer import CsvSerializer
-from io.serializers.excel_serializer import ExcelSerializer
+from iolib.serializers.json_serializer import JsonSerializer
+from iolib.serializers.yaml_serializer import YamlSerializer
+from iolib.serializers.csv_serializer import CsvSerializer
+from iolib.serializers.excel_serializer import ExcelSerializer
 
 
 def test_json_serialize_roundtrip():
