@@ -11,6 +11,8 @@ import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
+from io.serializers import SERIALIZERS, FORMAT_LABELS
+from io.results_exporter import ResultsExporter
 render_report_sidebar()
 
 st.title("📊 VaR портфеля")
@@ -383,7 +385,47 @@ try:
         
     st.divider()
     if st.button("Перейти к расчёту LVaR портфеля"):
-        st.switch_page("ui/lvar_page.py")        
+        st.switch_page("ui/lvar_page.py")
+
+    st.divider()
+    # ── Экспорт результатов ───────────────────────────────────────────────
+    exp_col1, exp_col2 = st.columns([1, 2])
+    with exp_col1:
+        pvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="pvar_res_fmt")
+    with exp_col2:
+        st.write("")
+        st.write("")
+        pvar_results = {
+            "individual_vars": pd.DataFrame.from_dict(individual_vars, orient="index", columns=["VaR"]),
+            "corr_matrix": corr_matrix,
+            "summary": {
+                "diversified_var": diversified_var,
+                "undiversified_var": undiversified_var,
+                "uncorrelated_var": uncorrelated_var,
+                "portfolio_es": portfolio_es,
+            },
+        }
+        pvar_serializer = SERIALIZERS[pvar_fmt]
+        raw_pvar = ResultsExporter(pvar_serializer).export(pvar_results)
+        st.download_button(
+            label=f"Скачать результаты (.{pvar_serializer.file_extension})",
+            data=raw_pvar,
+            file_name=f"portfolio_var.{pvar_serializer.file_extension}",
+            mime=pvar_serializer.mime_type,
+        )
+
+    # ── Добавить в отчёт ─────────────────────────────────────────────────
+    rb = st.session_state.get("report_builder")
+    if rb is not None:
+        page_id = "portfolio_var_page"
+        in_report = rb.has_section(page_id)
+        label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
+        if st.button(label, key="pvar_report_btn"):
+            if in_report:
+                rb.remove_section(page_id)
+            else:
+                rb.add_section(page_id, "Portfolio VaR / ES", pvar_results)
+            st.rerun()
 
 except Exception as exc:
     st.error(f"Ошибка расчета VaR портфеля: {exc.__class__.__name__}: {exc}")
