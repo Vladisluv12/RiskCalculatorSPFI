@@ -17,6 +17,10 @@ if 'data_provider' not in st.session_state:
 # Для отключения тестовой инициализации закомментируйте следующую строку.
 bootstrap_test_data(st.session_state)
 
+if 'report_builder' not in st.session_state:
+    from io.report_builder import ReportBuilder
+    st.session_state.report_builder = ReportBuilder()
+
 # Определяем страницы
 portfolio_page = st.Page(
     "ui/portfolio_page.py", 

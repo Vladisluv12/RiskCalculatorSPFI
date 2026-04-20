@@ -10,6 +10,8 @@ import streamlit as st
 import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from ui.sidebar import render_report_sidebar
+render_report_sidebar()
 
 st.title("📊 VaR портфеля")
 

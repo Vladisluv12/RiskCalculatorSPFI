@@ -1,9 +1,10 @@
 import streamlit as st
 from datetime import date
 
-from ui.sidebar import render_add_instrument_form
+from ui.sidebar import render_add_instrument_form, render_report_sidebar
 from ui.table_view import render_portfolio_table
 from utils.DataProvider import DataProvider
+render_report_sidebar()
 
 st.title("💼 Управление портфелем")
 

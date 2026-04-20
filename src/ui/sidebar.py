@@ -72,3 +72,25 @@ def render_swap_form():
     submitted = st.button('Добавить в портфель', width="stretch", key='swap_submit')
     if submitted:
         return CurrencySwapContract(instrument_id=f"{inst_id} {pair_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}", notional=fixed_sum, start_date=datetime.combine(start_date, datetime.min.time()), end_date=datetime.combine(end_date, datetime.min.time()), currency_pair=pair, base_currency=base_currency, quote_currency=quote_currency, fixed_sum_currency=base_currency, fixed_sum=fixed_sum, spot_rate=spot_rate, swap_points=swap_points, reverse_rate=reverse_rate, direction=Direction.BUY if direction == 'Buy' else Direction.SELL)
+
+
+def render_report_sidebar() -> None:
+    from io.report_builder import ReportBuilder
+    with st.sidebar:
+        st.divider()
+        rb: ReportBuilder = st.session_state.get("report_builder")
+        if rb is None:
+            return
+        count = rb.sections_count()
+        st.caption(f"📄 Отчёт: {count} {'секция' if count == 1 else 'секций'}")
+        if count > 0:
+            pdf_bytes = rb.build()
+            st.download_button(
+                label="Скачать PDF отчёт",
+                data=pdf_bytes,
+                file_name="risk_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        else:
+            st.button("Скачать PDF отчёт", disabled=True, use_container_width=True)
