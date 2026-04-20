@@ -94,6 +94,16 @@ try:
     sys.modules['io.serializers.yaml_serializer'] = io_serializers_yaml
     sys.modules['io.serializers.csv_serializer'] = io_serializers_csv
     sys.modules['io.serializers.excel_serializer'] = io_serializers_excel
+
+    # Load portfolio_io.py (uses absolute imports that resolve via sys.modules)
+    portfolio_code = open(os.path.join(io_path, 'portfolio_io.py')).read()
+    io_portfolio = types.ModuleType('io_portfolio_io')
+    io_portfolio.__file__ = os.path.join(io_path, 'portfolio_io.py')
+    sys.modules['io_portfolio_io'] = io_portfolio
+    exec(compile(portfolio_code, os.path.join(io_path, 'portfolio_io.py'), 'exec'),
+         io_portfolio.__dict__)
+    sys.modules['io.portfolio_io'] = io_portfolio
+    io_module.portfolio_io = io_portfolio
 except Exception as e:
     print(f"Warning: Could not set up io.serializers: {e}")
     import traceback
