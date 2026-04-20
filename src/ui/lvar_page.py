@@ -10,6 +10,8 @@ from compute.risk.liquidity import LiquidityParams
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
+from io.serializers import SERIALIZERS, FORMAT_LABELS
+from io.results_exporter import ResultsExporter
 render_report_sidebar()
 
 st.title("💧 LVaR (Liquidity-adjusted VaR)")
@@ -299,6 +301,44 @@ if st.button("Рассчитать LVaR"):
             f"Выбран VaR: **{recommended}** | "
             f"|PV| портфеля: **{total_abs_pv:,.0f}**"
         )
+
+        st.divider()
+        # ── Экспорт результатов ───────────────────────────────────────────────
+        lv_col1, lv_col2 = st.columns([1, 2])
+        with lv_col1:
+            lvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="lvar_res_fmt")
+        with lv_col2:
+            st.write("")
+            st.write("")
+            lvar_results = {
+                "instrument_lc": lc_df,
+                "lvar_normal": lvar_result["lvar_normal"],
+                "lvar_stressed": lvar_result["lvar_stressed"],
+                "var_portfolio_abs": var_portfolio_abs,
+                "lc_total_normal": lc_total["normal"],
+                "lc_total_stressed": lc_total["stressed"],
+            }
+            lvar_serializer = SERIALIZERS[lvar_fmt]
+            raw_lvar = ResultsExporter(lvar_serializer).export(lvar_results)
+            st.download_button(
+                label=f"Скачать результаты (.{lvar_serializer.file_extension})",
+                data=raw_lvar,
+                file_name=f"lvar.{lvar_serializer.file_extension}",
+                mime=lvar_serializer.mime_type,
+            )
+
+        # ── Добавить в отчёт ─────────────────────────────────────────────────
+        rb = st.session_state.get("report_builder")
+        if rb is not None:
+            page_id = "lvar_page"
+            in_report = rb.has_section(page_id)
+            label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
+            if st.button(label, key="lvar_report_btn"):
+                if in_report:
+                    rb.remove_section(page_id)
+                else:
+                    rb.add_section(page_id, "LVaR Portfolio", lvar_results)
+                st.rerun()
 
     except Exception as exc:
         st.error(f"Ошибка расчёта LVaR: {exc.__class__.__name__}: {exc}")
