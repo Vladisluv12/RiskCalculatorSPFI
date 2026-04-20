@@ -4,6 +4,8 @@ from datetime import date
 from ui.sidebar import render_add_instrument_form, render_report_sidebar
 from ui.table_view import render_portfolio_table
 from utils.DataProvider import DataProvider
+from io.serializers import SERIALIZERS, FORMAT_LABELS
+from io.portfolio_io import PortfolioImporter, PortfolioExporter
 render_report_sidebar()
 
 st.title("💼 Управление портфелем")
@@ -43,6 +45,41 @@ st.caption(f"Текущая дата расчета: {st.session_state.valuation
 st.caption(f"Текущая папка данных: {st.session_state.data_dir}")
 
 st.divider()
+
+# ── Импорт портфеля ──────────────────────────────────────────────────────────
+with st.expander("📥 Импорт портфеля из файла"):
+    import_fmt = st.selectbox("Формат", FORMAT_LABELS, key="import_fmt")
+    uploaded = st.file_uploader(
+        "Загрузить файл",
+        type=["json", "yaml", "yml", "csv", "xlsx"],
+        key="portfolio_upload",
+    )
+    if st.button("Загрузить в портфель") and uploaded is not None:
+        raw = uploaded.read()
+        instruments, errors = PortfolioImporter(SERIALIZERS[import_fmt]).load(raw)
+        if instruments:
+            st.session_state.portfolio.extend(instruments)
+            st.success(f"Загружено инструментов: {len(instruments)}")
+        if errors:
+            st.warning(f"Пропущено строк с ошибками: {len(errors)}")
+            with st.expander("Детали ошибок"):
+                for e in errors:
+                    st.text(e)
+        if instruments:
+            st.rerun()
+
+# ── Экспорт портфеля ─────────────────────────────────────────────────────────
+if st.session_state.get("portfolio"):
+    with st.expander("📤 Экспорт портфеля"):
+        export_fmt = st.selectbox("Формат", FORMAT_LABELS, key="export_fmt")
+        serializer = SERIALIZERS[export_fmt]
+        raw = PortfolioExporter(serializer).save(st.session_state.portfolio)
+        st.download_button(
+            label=f"Скачать портфель (.{serializer.file_extension})",
+            data=raw,
+            file_name=f"portfolio.{serializer.file_extension}",
+            mime=serializer.mime_type,
+        )
 
 # Кнопка добавления актива
 if st.button("➕ Добавить актив"):
