@@ -104,6 +104,26 @@ try:
          io_portfolio.__dict__)
     sys.modules['io.portfolio_io'] = io_portfolio
     io_module.portfolio_io = io_portfolio
+
+    # Load results_exporter.py (uses absolute imports that resolve via sys.modules)
+    results_code = open(os.path.join(io_path, 'results_exporter.py')).read()
+    io_results = types.ModuleType('io_results_exporter')
+    io_results.__file__ = os.path.join(io_path, 'results_exporter.py')
+    sys.modules['io_results_exporter'] = io_results
+    exec(compile(results_code, os.path.join(io_path, 'results_exporter.py'), 'exec'),
+         io_results.__dict__)
+    sys.modules['io.results_exporter'] = io_results
+    io_module.results_exporter = io_results
+
+    # Load report_builder.py (uses only stdlib and fpdf imports)
+    report_code = open(os.path.join(io_path, 'report_builder.py')).read()
+    io_report = types.ModuleType('io_report_builder')
+    io_report.__file__ = os.path.join(io_path, 'report_builder.py')
+    sys.modules['io_report_builder'] = io_report
+    exec(compile(report_code, os.path.join(io_path, 'report_builder.py'), 'exec'),
+         io_report.__dict__)
+    sys.modules['io.report_builder'] = io_report
+    io_module.report_builder = io_report
 except Exception as e:
     print(f"Warning: Could not set up io.serializers: {e}")
     import traceback
