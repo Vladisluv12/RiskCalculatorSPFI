@@ -1,6 +1,13 @@
-from .base import BaseSerializer
 from .json_serializer import JsonSerializer
 from .yaml_serializer import YamlSerializer
 from .csv_serializer import CsvSerializer
+from .excel_serializer import ExcelSerializer
 
-__all__ = ["BaseSerializer", "JsonSerializer", "YamlSerializer", "CsvSerializer"]
+SERIALIZERS: dict = {
+    "json":  JsonSerializer(),
+    "yaml":  YamlSerializer(),
+    "csv":   CsvSerializer(),
+    "excel": ExcelSerializer(),
+}
+
+FORMAT_LABELS = list(SERIALIZERS.keys())  # ["json", "yaml", "csv", "excel"]

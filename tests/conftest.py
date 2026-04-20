@@ -55,6 +55,16 @@ sys.modules['io_serializers_csv_serializer'] = io_serializers_csv
 exec(compile(csv_code, os.path.join(serializers_path, 'csv_serializer.py'), 'exec'),
      io_serializers_csv.__dict__)
 
+# Load excel_serializer.py with fixed imports
+excel_code = open(os.path.join(serializers_path, 'excel_serializer.py')).read()
+excel_code = excel_code.replace('from .base import BaseSerializer',
+                                'from io_serializers_base import BaseSerializer')
+io_serializers_excel = types.ModuleType('io_serializers_excel_serializer')
+io_serializers_excel.__file__ = os.path.join(serializers_path, 'excel_serializer.py')
+sys.modules['io_serializers_excel_serializer'] = io_serializers_excel
+exec(compile(excel_code, os.path.join(serializers_path, 'excel_serializer.py'), 'exec'),
+     io_serializers_excel.__dict__)
+
 # Create io.serializers namespace
 try:
     builtin_io = __import__('io')
@@ -74,6 +84,7 @@ try:
     serializers_module.JsonSerializer = io_serializers_json.JsonSerializer
     serializers_module.YamlSerializer = io_serializers_yaml.YamlSerializer
     serializers_module.CsvSerializer = io_serializers_csv.CsvSerializer
+    serializers_module.ExcelSerializer = io_serializers_excel.ExcelSerializer
 
     io_module.serializers = serializers_module
     sys.modules['io'] = io_module
@@ -82,6 +93,7 @@ try:
     sys.modules['io.serializers.json_serializer'] = io_serializers_json
     sys.modules['io.serializers.yaml_serializer'] = io_serializers_yaml
     sys.modules['io.serializers.csv_serializer'] = io_serializers_csv
+    sys.modules['io.serializers.excel_serializer'] = io_serializers_excel
 except Exception as e:
     print(f"Warning: Could not set up io.serializers: {e}")
     import traceback

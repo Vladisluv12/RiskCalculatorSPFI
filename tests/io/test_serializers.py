@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 from io.serializers.json_serializer import JsonSerializer
 from io.serializers.yaml_serializer import YamlSerializer
 from io.serializers.csv_serializer import CsvSerializer
+from io.serializers.excel_serializer import ExcelSerializer
 
 
 def test_json_serialize_roundtrip():
@@ -54,3 +55,21 @@ def test_csv_serialize_dataframe():
 
 def test_csv_file_extension():
     assert CsvSerializer().file_extension == "csv"
+
+
+def test_excel_roundtrip_list_of_dicts():
+    s = ExcelSerializer()
+    data = [{"type": "FXForward", "notional": 100000.0, "direction": "Buy"}]
+    raw = s.serialize(data)
+    assert isinstance(raw, bytes)
+    result = s.deserialize(raw)
+    assert result[0]["type"] == "FXForward"
+    assert float(result[0]["notional"]) == 100000.0
+
+
+def test_excel_file_extension():
+    assert ExcelSerializer().file_extension == "xlsx"
+
+
+def test_excel_mime_type():
+    assert "spreadsheet" in ExcelSerializer().mime_type
