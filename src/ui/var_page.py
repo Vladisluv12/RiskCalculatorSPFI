@@ -168,13 +168,13 @@ if selected_id:
 
             # Метрики внизу
             st.divider()
-            if type_of_var == "Исторический":
-                st.latex(r"ES = \left|\,\mathbb{E}\left[PnL \mid PnL \leq Q_{\alpha}\right]\right|")
-            else:
-                st.latex(r"ES = \left|-\mu + \sigma\,\frac{\varphi(z_{\alpha})}{\alpha}\right|\cdot\sqrt{horizon}")
             mc1, mc2 = st.columns(2)
             mc1.metric("Рассчитанный VaR", f"{abs(var_cutoff):.4f}")
             mc2.metric("Рассчитанный ES", f"{abs(es_cutoff):.4f}" if not np.isnan(es_cutoff) else "—")
+
+            st.divider()
+            if st.button("Перейти к расчёту VaR портфеля"):
+                st.switch_page("ui/portfolio_var_page.py")
         except Exception as exc:
             st.error(f"Ошибка расчета VaR: {exc.with_traceback(None)}")
             err_stack = traceback.format_exc()

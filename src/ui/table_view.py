@@ -33,10 +33,10 @@ def render_portfolio_table(portfolio: list):
         st.dataframe(df, width="stretch", hide_index=True, column_config=column_config)
         col1, col2, _ = st.columns([1, 1, 2])
         with col1:
-            if st.button('🗑️ Очистить портфель', type='primary'):
+            if st.button('Очистить портфель', type='primary'):
                 st.session_state.portfolio = []
                 st.rerun()
     with col2:
-        if st.button('📊 Экспорт в CSV'):
+        if st.button('Экспорт в CSV'):
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(label='Скачать CSV', data=csv, file_name='portfolio.csv', mime='text/csv')

@@ -10,7 +10,7 @@ class LiquidityParams:
     k: float = 3.0                        # калибровочный коэффициент (российский рынок)
     floor_spread: float = 0.001           # минимальный спред (10 bps)
     alpha: float = 0.10                   # асимметрия BUY/SELL
-    lambda_: float = 0.94                 # EWMA decay (RiskMetrics)
+    lambda_: float = 0.94                 # EWMA decay
     avg_daily_volume: dict = field(default_factory=dict)  # {currency_pair: float}
 
 

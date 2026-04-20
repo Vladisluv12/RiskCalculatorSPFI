@@ -49,26 +49,94 @@ with r2c2:
 st.divider()
 
 # ──────────────────────────────────────────────
+# Описание модели
+# ──────────────────────────────────────────────
+with st.expander("Описание используемой модели ликвидности"):
+    st.markdown(
+        """
+**Моделель LVaR**
+
+Cпред bid/ask моделируется как случайная величина, зависящая от волатильности курса.
+Ликвидностная надбавка (Liquidity cost) отражает стоимость закрытия позиции через рынок.
+
+---
+
+**Шаг 1 - EWMA-волатильность**:
+$$\\sigma^2(t) = \\lambda \\cdot \\sigma^2(t-1) + (1-\\lambda) \\cdot r^2(t)$$
+
+**Шаг 2 - Оценка спреда**:
+$$s\\%(t) = \\max\\bigl(k \\cdot \\sigma_{\\text{ewma}}(t) \\cdot \\sqrt{\\text{tenor}},\\; s_{\\text{floor}}\\bigr)$$
+
+С поправкой на направление и размер позиции:
+$$s\\%_{\\text{adj}}(t) = s\\%(t) \\times d_{\\text{adj}} \\times q_{\\text{adj}}$$
+
+где $d_{\\text{adj}} = 1 + \\alpha$ (BUY) или $1 - \\alpha$ (SELL),
+$\\;q_{\\text{adj}} = 1 + 0.5 \\times \\dfrac{N}{ADV}$ (если ADV задан).
+
+**Шаг 3 - Liquidity cost**:
+$$LC^{\\text{normal}} = \\tfrac{1}{2}\\,|PV|\\cdot s\\%_{\\text{last}}$$
+$$LC^{\\text{stressed}} = \\tfrac{1}{2}\\,|PV|\\cdot\\bigl(s\\%_{\\text{last}} + z_\\alpha \\cdot \\sigma_{s\\%}\\bigr)$$
+
+**Шаг 4 - LVaR с T-дневной равномерной ликвидацией**:
+$$LVaR_T = \\frac{VaR + LC}{\\sqrt{\\dfrac{(1+T)(1+2T)}{6T}}}$$
+        """
+    )
+
+# ──────────────────────────────────────────────
 # Параметры ликвидности
 # ──────────────────────────────────────────────
 st.subheader("Параметры ликвидности")
 lc1, lc2, lc3 = st.columns(3)
 with lc1:
-    k = st.number_input("k (калибровка)", value=3.0, min_value=0.1, step=0.1,
-                         help="Коэффициент волатильность-спред")
-    floor_spread = st.number_input("floor_spread (мин. спред)", value=0.001,
-                                    min_value=0.0001, step=0.0001, format="%.4f",
-                                    help="Минимальный спред (10 bps = 0.001).")
+    k = st.number_input(
+        "k — масштаб спреда",
+        value=3.0, min_value=0.1, step=0.1,
+        help=(
+            "Калибровочный коэффициент в формуле спреда:\n"
+            "s%(t) = max(k × σ_ewma(t) × √tenor, s_floor).\n"
+            "Чем выше k — тем больше спред при той же волатильности. "
+            "Для российского рынка типично 2–4."
+        ),
+    )
+    floor_spread = st.number_input(
+        "s_floor — минимальный спред",
+        value=0.001, min_value=0.0001, step=0.0001, format="%.4f",
+        help=(
+            "Нижняя граница спреда (пол): даже при нулевой волатильности\n"
+            "спред не опустится ниже этого значения.\n"
+            "10 bps = 0.001, 50 bps = 0.005."
+        ),
+    )
 with lc2:
-    alpha = st.number_input("α (асимметрия BUY/SELL)", value=0.10,
-                             min_value=0.0, max_value=0.5, step=0.01,
-                             help="BUY получает спред ×(1+α), SELL ×(1-α).")
-    lambda_ = st.number_input("λ (EWMA decay)", value=0.94,
-                               min_value=0.50, max_value=0.999, step=0.01,
-                               help="RiskMetrics: 0.94 для дневных данных.")
+    alpha = st.number_input(
+        "α — асимметрия BUY/SELL",
+        value=0.10, min_value=0.0, max_value=0.5, step=0.01,
+        help=(
+            "Поправка на сторону сделки:\n"
+            "BUY - спред × (1 + α)  (платим ask-side),\n"
+            "SELL - спред × (1 − α)  (получаем bid-side).\n"
+            "При α = 0 асимметрия не учитывается."
+        ),
+    )
+    lambda_ = st.number_input(
+        "λ — коэффициент затухания EWMA",
+        value=0.94, min_value=0.50, max_value=0.999, step=0.01,
+        help=(
+            "Параметр экспоненциального взвешивания волатильности:\n"
+            "σ²(t) = λ·σ²(t−1) + (1−λ)·r²(t).\n"
+            "Стандарт RiskMetrics для дневных данных - 0.94."
+        ),
+    )
 with lc3:
-    T = st.number_input("T (дней на ликвидацию)", value=1, min_value=1, max_value=30,
-                         help="Равномерный выход за T дней")
+    T = st.number_input(
+        "T — дней на ликвидацию",
+        value=1, min_value=1, max_value=30,
+        help=(
+            "Число дней равномерной ликвидации позиции.\n"
+            "Масштабирующий T-фактор:\n"
+            "√((1+T)(1+2T) / (6T))."
+        ),
+    )
 
 st.subheader("Средний дневной объём торгов (ADV)")
 st.caption("0, чтобы не учитывать поправку на размер позиции.")

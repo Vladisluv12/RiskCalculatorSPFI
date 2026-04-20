@@ -243,46 +243,23 @@ try:
         st.latex(r"ES_P = \left|\,\mathbb{E}\left[PnL_P \mid PnL_P \leq Q_{\alpha}\right]\right|")
     else:
         st.latex(r"ES_P = \left|-\mu_P + \sigma_P\,\frac{\varphi(z_{\alpha})}{\alpha}\right|\cdot\sqrt{horizon}")
-    st.caption(
-        "ES показывает **среднюю потерю в худших сценариях** за пределами VaR."
-    )
-
     st.divider()
 
     m1, m2, m3 = st.columns(3)
+    
+    var_types = ["diversified", "undiversified", "uncorrelated"]
+    var_descs = ["Диверсифицированный VaR", "Недиверсифицированный VaR", "VaR (некоррел. позиции)"]
+    var_vals = [diversified_var, undiversified_var, uncorrelated_var]
+    rec_ind = var_types.index(recommended)
 
     with m1:
-        is_rec = recommended == "diversified"
         st.metric(
-            "Диверсифицированный VaR" + (" ✅" if is_rec else ""),
-            f"{diversified_var:.4f}",
+            var_descs[0],
+            f"{var_vals[0]:.4f}",
         )
-        if is_rec:
-            st.success(hints["diversified"])
-        else:
-            st.caption(hints["diversified"])
+        st.success(hints[var_types[rec_ind]])
 
-    with m2:
-        is_rec = recommended == "undiversified"
-        st.metric(
-            "Недиверсифицированный VaR" + (" ✅" if is_rec else ""),
-            f"{undiversified_var:.4f}",
-        )
-        if is_rec:
-            st.success(hints["undiversified"])
-        else:
-            st.caption(hints["undiversified"])
 
-    with m3:
-        is_rec = recommended == "uncorrelated"
-        st.metric(
-            "VaR (некоррел. позиции)" + (" ✅" if is_rec else ""),
-            f"{uncorrelated_var:.4f}",
-        )
-        if is_rec:
-            st.success(hints["uncorrelated"])
-        else:
-            st.caption(hints["uncorrelated"])
 
     st.metric("Expected Shortfall портфеля", f"{portfolio_es:.4f}")
 
@@ -337,7 +314,6 @@ try:
         annotation_position="top left",
     )
     fig_pnl.update_layout(
-        title="Отсортированный PnL портфеля",
         xaxis_title="Порядковый номер",
         yaxis_title="PnL",
         template="plotly_white",
@@ -402,10 +378,10 @@ try:
         )
 
         cvar_sum = sum(cvar_dict.values())
-        st.caption(
-            f"Σ CVaR_i = {cvar_sum:.4f}  ≈  "
-            f"VaR_portfolio ({recommended}) = {recommended_var_value:.4f}"
-        )
+        
+    st.divider()
+    if st.button("Перейти к расчёту LVaR портфеля"):
+        st.switch_page("ui/lvar_page.py")        
 
 except Exception as exc:
     st.error(f"Ошибка расчета VaR портфеля: {exc.__class__.__name__}: {exc}")

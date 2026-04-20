@@ -1,6 +1,12 @@
 __pycache__/
 .idea/
 .vscode/
+.serena/
 TZGeneration/
 TPGeneration/
 KT1/
+KT2/
+docs/
+
+.mcp.json
+try_get.py
