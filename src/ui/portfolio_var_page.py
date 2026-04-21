@@ -7,12 +7,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-import compute.risk.var as var
+import compute.risk.portfolio_var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
-from iolib.serializers import SERIALIZERS, FORMAT_LABELS
-from iolib.results_exporter import ResultsExporter
+from ui.components import render_export_download, render_report_toggle
+from ui.ivar_cvar_section import render_ivar_cvar_section
+
+
 render_report_sidebar()
 
 st.title("📊 VaR портфеля")
@@ -270,7 +272,7 @@ fig_pnl.add_trace(go.Bar(
     name="Отсортированный PnL портфеля", hovertemplate="PnL: %{y:.4f}<extra></extra>",
 ))
 fig_pnl.add_vline(
-    x=var_cutoff_idx, line_dash="dash", line_color="black", line_width=2,
+    x=var_cutoff_idx, line_dash="dash", line_color="#EF553B", line_width=2,
     annotation_text=f"Граница VaR {r['conf_level'] * 100:.0f}%", annotation_position="top left",
 )
 fig_pnl.update_layout(xaxis_title="Порядковый номер", yaxis_title="PnL", template="plotly_white", hovermode="x unified")
@@ -279,65 +281,24 @@ st.plotly_chart(fig_pnl, width="stretch")
 st.divider()
 
 # ── IVaR и CVaR ───────────────────────────────────────────────────────────────
-st.subheader("Вклад инструментов в риск портфеля")
-st.latex(r"CVaR_i = \rho_{i,P} \cdot VaR_i, \quad \sum_i CVaR_i \approx VaR_{portfolio}")
-st.latex(r"IVaR_i = VaR_{portfolio} - VaR_{portfolio \setminus i}")
-
 recommended_var_value = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
 method_key = "historical" if r["type_of_var"] == "Исторический" else "parametric"
 
-_pvar_contrib_key = _pvar_params_key
-_contrib_stale = (
-    "pvar_contrib" in st.session_state
-    and st.session_state["pvar_contrib"].get("_params_key") != _pvar_contrib_key
+contrib_df = render_ivar_cvar_section(
+    data_provider=data_provider,
+    var_instruments=var_instruments,
+    calc_start=calc_start,
+    calc_end=calc_end,
+    individual_vars=individual_vars,
+    pnl_matrix=pnl_matrix,
+    recommended=recommended,
+    recommended_var_value=recommended_var_value,
+    conf_level=r["conf_level"],
+    window=r["window"],
+    horizon=int(r["horizon"]),
+    method_key=method_key,
+    params_key=_pvar_params_key,
 )
-if _contrib_stale:
-    st.warning("Параметры изменились — CVaR/IVaR устарели. Нажмите «Рассчитать IVaR и CVaR» для обновления.")
-
-if st.button("Рассчитать IVaR и CVaR"):
-    try:
-        with st.spinner("Расчёт..."):
-            cvar_dict = var.compute_cvar(pnl_matrix, individual_vars)
-            ivar_dict = var.portfolio_ivar(
-                data_provider, var_instruments, calc_start, calc_end,
-                confidence_level=r["conf_level"], window=r["window"], horizon=int(r["horizon"]),
-                method=method_key, recommended_var_type=recommended, var_full=recommended_var_value,
-            )
-        contrib_rows = []
-        for iid, var_i in individual_vars.items():
-            cvar_i = cvar_dict.get(iid, 0.0)
-            ivar_i = ivar_dict.get(iid, 0.0)
-            contrib_rows.append({
-                "Инструмент": iid,
-                "VaR_i": var_i,
-                "CVaR_i": cvar_i,
-                "CVaR_i %": cvar_i / recommended_var_value * 100 if recommended_var_value else 0.0,
-                "IVaR_i": ivar_i,
-                "IVaR_i %": ivar_i / recommended_var_value * 100 if recommended_var_value else 0.0,
-            })
-        st.session_state["pvar_contrib"] = {
-            "_params_key": _pvar_contrib_key,
-            "contrib_df": pd.DataFrame(contrib_rows).set_index("Инструмент"),
-            "cvar_sum": sum(cvar_dict.values()),
-        }
-        st.rerun()
-    except Exception as exc:
-        st.error(f"Ошибка расчета CVaR/IVaR: {exc.__class__.__name__}: {exc}")
-        with st.expander("Детали ошибки"):
-            st.code(traceback.format_exc())
-
-contrib_df = None
-if "pvar_contrib" in st.session_state:
-    contrib_df = st.session_state["pvar_contrib"]["contrib_df"]
-    cvar_sum = st.session_state["pvar_contrib"]["cvar_sum"]
-    st.dataframe(
-        contrib_df.style.format({
-            "VaR_i": "{:.4f}", "CVaR_i": "{:.4f}",
-            "CVaR_i %": "{:.1f}%", "IVaR_i": "{:.4f}", "IVaR_i %": "{:.1f}%",
-        }),
-        width="stretch",
-    )
-    st.caption(f"Сумма CVaR: {cvar_sum:.4f}")
 
 st.divider()
 
@@ -353,32 +314,8 @@ pvar_results = {
 if contrib_df is not None:
     pvar_results["contrib_ivar_cvar"] = contrib_df
 
-exp_col1, exp_col2 = st.columns([1, 2])
-with exp_col1:
-    pvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="pvar_res_fmt")
-pvar_serializer = SERIALIZERS[pvar_fmt]
-raw_pvar = ResultsExporter(pvar_serializer).export(pvar_results)
-with exp_col2:
-    st.write("")
-    st.write("")
-    st.download_button(
-        label=f"Скачать результаты (.{pvar_serializer.file_extension})",
-        data=raw_pvar,
-        file_name=f"portfolio_var.{pvar_serializer.file_extension}",
-        mime=pvar_serializer.mime_type,
-    )
-
-rb = st.session_state.get("report_builder")
-if rb is not None:
-    page_id = "portfolio_var_page"
-    in_report = rb.has_section(page_id)
-    label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
-    if st.button(label, key="pvar_report_btn"):
-        if in_report:
-            rb.remove_section(page_id)
-        else:
-            rb.add_section(page_id, "Portfolio VaR / ES", pvar_results)
-        st.rerun()
+render_export_download(pvar_results, "portfolio_var", "pvar_res_fmt")
+render_report_toggle("portfolio_var_page", "Portfolio VaR / ES", pvar_results, "pvar_report_btn")
 
 st.divider()
 if st.button("Перейти к расчёту LVaR портфеля"):

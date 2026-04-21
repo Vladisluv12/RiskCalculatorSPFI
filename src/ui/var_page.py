@@ -11,8 +11,7 @@ import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
-from iolib.serializers import SERIALIZERS, FORMAT_LABELS
-from iolib.results_exporter import ResultsExporter
+from ui.components import render_export_download, render_report_toggle
 render_report_sidebar()
 
 st.title("📉 Анализ рисков (VaR)")
@@ -130,7 +129,7 @@ if selected_id:
                 fig.add_vline(
                     x=var_index,
                     line_dash="dash",
-                    line_color="black",
+                    line_color="#EF553B",
                     line_width=2,
                     annotation_text=f"Граница VaR {conf_level * 100:.0f}%",
                     annotation_position="top left"
@@ -180,38 +179,15 @@ if selected_id:
             st.divider()
 
             # ── Экспорт результатов ───────────────────────────────────────────
-            exp_col1, exp_col2 = st.columns([1, 2])
-            with exp_col1:
-                res_fmt = st.selectbox("Формат", FORMAT_LABELS, key="var_res_fmt")
-            with exp_col2:
-                st.write("")
-                st.write("")
-                results_data = {
-                    "pnl": pnl if type_of_var == "Исторический" else pd.DataFrame(),
-                    "var": float(abs(var_cutoff)) if not np.isnan(var_cutoff) else 0.0,
-                    "es": float(abs(es_cutoff)) if not np.isnan(es_cutoff) else 0.0,
-                }
-                serializer = SERIALIZERS[res_fmt]
-                raw_res = ResultsExporter(serializer).export(results_data)
-                st.download_button(
-                    label=f"Скачать результаты (.{serializer.file_extension})",
-                    data=raw_res,
-                    file_name=f"var_{selected_id}.{serializer.file_extension}",
-                    mime=serializer.mime_type,
-                )
+            results_data = {
+                "pnl": pnl if type_of_var == "Исторический" else pd.DataFrame(),
+                "var": float(abs(var_cutoff)) if not np.isnan(var_cutoff) else 0.0,
+                "es": float(abs(es_cutoff)) if not np.isnan(es_cutoff) else 0.0,
+            }
+            render_export_download(results_data, f"var_{selected_id}", "var_res_fmt")
 
             # ── Добавить в отчёт ─────────────────────────────────────────────
-            rb = st.session_state.get("report_builder")
-            if rb is not None:
-                page_id = f"var_{selected_id}"
-                in_report = rb.has_section(page_id)
-                label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
-                if st.button(label, key="var_report_btn"):
-                    if in_report:
-                        rb.remove_section(page_id)
-                    else:
-                        rb.add_section(page_id, f"VaR: {selected_id}", results_data)
-                    st.rerun()
+            render_report_toggle(f"var_{selected_id}", f"VaR: {selected_id}", results_data, "var_report_btn")
 
             st.divider()
             if st.button("Перейти к расчёту VaR портфеля"):

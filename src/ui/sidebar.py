@@ -3,6 +3,8 @@ from datetime import date, datetime
 from instruments.BaseInstrument import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+
+
 def _get_global_valuation_date() -> date:
     valuation_date = st.session_state.get('valuation_date')
     if isinstance(valuation_date, datetime):
@@ -12,6 +14,8 @@ def _get_global_valuation_date() -> date:
             return valuation_date
         else:
             return date.today()
+
+
 def render_add_instrument_form():
     """Отрисовывает форму добавления инструмента в боковой панели."""
     with st.sidebar:

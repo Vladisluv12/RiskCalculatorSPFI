@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from compute.risk.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc
+from compute.modelling.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc
 from instruments.BaseInstrument import Direction
 
 
@@ -95,8 +95,8 @@ def test_compute_lc_negative_pv():
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from compute.risk.var import portfolio_lvar
-from compute.risk.liquidity import LiquidityParams
+from compute.risk.lvar import portfolio_lvar
+from compute.modelling.liquidity import LiquidityParams
 from instruments.BaseInstrument import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 

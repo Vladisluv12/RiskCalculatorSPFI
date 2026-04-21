@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from instruments.BaseInstrument import Direction
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
-from compute.curves.RiskFreeRate import get_risk_free_rate
+from compute.modelling.RiskFreeRate import get_risk_free_rate
 
 class CurrencySwapPricer:
     """Оценщик для валютных свопов на основе предоставленных dataclasses."""

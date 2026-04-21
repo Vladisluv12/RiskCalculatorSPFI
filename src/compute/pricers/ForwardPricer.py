@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from instruments.BaseInstrument import CurrencyPair, Direction
 from instruments.FXForward import CurrencyForwardContract
 from utils.DataProvider import DataProvider
-from compute.curves.RiskFreeRate import get_risk_free_rate
+from compute.modelling.RiskFreeRate import get_risk_free_rate
 
 class ForwardPricer:
     """Оценщик для валютных форвардов на основе предоставленных dataclasses"""

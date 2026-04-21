@@ -5,13 +5,15 @@ from datetime import datetime, time, timedelta
 import numpy as np
 import pandas as pd
 import streamlit as st
-import compute.risk.var as var
-from compute.risk.liquidity import LiquidityParams
+import compute.risk.lvar as var
+import compute.risk.portfolio_var as pvar
+from compute.modelling.liquidity import LiquidityParams
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from ui.sidebar import render_report_sidebar
-from iolib.serializers import SERIALIZERS, FORMAT_LABELS
-from iolib.results_exporter import ResultsExporter
+from ui.components import render_export_download, render_report_toggle
+
+
 render_report_sidebar()
 
 st.title("💧 LVaR (Liquidity-adjusted VaR)")
@@ -100,7 +102,6 @@ with lc1:
             "Калибровочный коэффициент в формуле спреда:\n"
             "s%(t) = max(k × σ_ewma(t) × √tenor, s_floor).\n"
             "Чем выше k - тем больше спред при той же волатильности. "
-            "Для российского рынка типично 2–4."
         ),
     )
     floor_spread = st.number_input(
@@ -197,12 +198,12 @@ if st.button("Рассчитать LVaR"):
     try:
         with st.spinner("Расчёт VaR портфеля..."):
             if type_of_var == "Исторический":
-                var_result = var.portfolio_historical(
+                var_result = pvar.portfolio_historical(
                     data_provider, var_instruments, calc_start, calc_end,
                     confidence_level=conf_level, window=window, horizon=int(horizon),
                 )
             else:
-                var_result = var.portfolio_parametric(
+                var_result = pvar.portfolio_parametric(
                     data_provider, var_instruments, calc_start, calc_end,
                     confidence_level=conf_level, window=window, horizon=int(horizon),
                 )
@@ -344,30 +345,7 @@ if "lvar_results" in st.session_state:
         "lc_total_normal": res["lc_total_normal"],
         "lc_total_stressed": res["lc_total_stressed"],
     }
-    lv_col1, lv_col2 = st.columns([1, 2])
-    with lv_col1:
-        lvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="lvar_res_fmt")
-    lvar_serializer = SERIALIZERS[lvar_fmt]
-    raw_lvar = ResultsExporter(lvar_serializer).export(lvar_export_data)
-    with lv_col2:
-        st.write("")
-        st.write("")
-        st.download_button(
-            label=f"Скачать результаты (.{lvar_serializer.file_extension})",
-            data=raw_lvar,
-            file_name=f"lvar.{lvar_serializer.file_extension}",
-            mime=lvar_serializer.mime_type,
-        )
+    render_export_download(lvar_export_data, "lvar", "lvar_res_fmt")
 
     # ── Добавить в отчёт ─────────────────────────────────────────────────────
-    rb = st.session_state.get("report_builder")
-    if rb is not None:
-        page_id = "lvar_page"
-        in_report = rb.has_section(page_id)
-        label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
-        if st.button(label, key="lvar_report_btn"):
-            if in_report:
-                rb.remove_section(page_id)
-            else:
-                rb.add_section(page_id, "LVaR Portfolio", lvar_export_data)
-            st.rerun()
+    render_report_toggle("lvar_page", "LVaR Portfolio", lvar_export_data, "lvar_report_btn")
