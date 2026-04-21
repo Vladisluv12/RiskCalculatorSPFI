@@ -4,17 +4,20 @@ from datetime import date
 from ui.sidebar import render_add_instrument_form, render_report_sidebar
 from ui.table_view import render_portfolio_table
 from utils.DataProvider import DataProvider
-from iolib.serializers import SERIALIZERS, FORMAT_LABELS
+from iolib.serializers import SERIALIZERS, FORMAT_LABELS, EXT_TO_SERIALIZER
 from iolib.portfolio_io import PortfolioImporter, PortfolioExporter
 render_report_sidebar()
 
 st.title("💼 Управление портфелем")
 
-# Инициализация session_state
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = []
 if 'show_add_form' not in st.session_state:
     st.session_state.show_add_form = False
+if 'show_import' not in st.session_state:
+    st.session_state.show_import = False
+if 'show_export' not in st.session_state:
+    st.session_state.show_export = False
 if 'valuation_date' not in st.session_state:
     st.session_state.valuation_date = date.today()
 if 'data_dir' not in st.session_state:
@@ -46,42 +49,6 @@ st.caption(f"Текущая папка данных: {st.session_state.data_dir}
 
 st.divider()
 
-# ── Импорт портфеля ──────────────────────────────────────────────────────────
-with st.expander("📥 Импорт портфеля из файла"):
-    import_fmt = st.selectbox("Формат", FORMAT_LABELS, key="import_fmt")
-    uploaded = st.file_uploader(
-        "Загрузить файл",
-        type=["json", "yaml", "yml", "csv", "xlsx"],
-        key="portfolio_upload",
-    )
-    if st.button("Загрузить в портфель") and uploaded is not None:
-        raw = uploaded.read()
-        instruments, errors = PortfolioImporter(SERIALIZERS[import_fmt]).load(raw)
-        if instruments:
-            st.session_state.portfolio.extend(instruments)
-            st.success(f"Загружено инструментов: {len(instruments)}")
-        if errors:
-            st.warning(f"Пропущено строк с ошибками: {len(errors)}")
-            with st.expander("Детали ошибок"):
-                for e in errors:
-                    st.text(e)
-        if instruments:
-            st.rerun()
-
-# ── Экспорт портфеля ─────────────────────────────────────────────────────────
-if st.session_state.get("portfolio"):
-    with st.expander("📤 Экспорт портфеля"):
-        export_fmt = st.selectbox("Формат", FORMAT_LABELS, key="export_fmt")
-        serializer = SERIALIZERS[export_fmt]
-        raw = PortfolioExporter(serializer).save(st.session_state.portfolio)
-        st.download_button(
-            label=f"Скачать портфель (.{serializer.file_extension})",
-            data=raw,
-            file_name=f"portfolio.{serializer.file_extension}",
-            mime=serializer.mime_type,
-        )
-
-# Кнопка добавления актива
 if st.button("➕ Добавить актив"):
     st.session_state.show_add_form = True
 
@@ -92,20 +59,96 @@ if st.session_state.get('show_add_form'):
         st.session_state.show_add_form = False
         st.rerun()
 
-# Таблица
 if st.session_state.portfolio:
     render_portfolio_table(st.session_state.portfolio)
-    
-    # Кнопка перехода на VaR
-    if len(st.session_state.portfolio) > 0:
-        selected_id = st.selectbox(
-            "Выберите инструмент для анализа",
-            [c.instrument_id for c in st.session_state.portfolio]
+
+    # ── Панель импорта ────────────────────────────────────────────────────────
+    if st.session_state.get('show_import'):
+        uploaded = st.file_uploader(
+            "Выберите файл портфеля",
+            type=list(EXT_TO_SERIALIZER.keys()),
+            key="portfolio_upload",
         )
-        if st.button("Перейти к расчету VaR"):
-            st.session_state.selected_id = selected_id
-            st.switch_page("ui/var_page.py")
-        if st.button("📊 Перейти к расчету VaR портфеля"):
-            st.switch_page("ui/portfolio_var_page.py")
+        if uploaded is not None:
+            ext = uploaded.name.rsplit(".", 1)[-1].lower()
+            serializer = EXT_TO_SERIALIZER.get(ext)
+            if serializer is None:
+                st.error(f"Неподдерживаемый формат файла: .{ext}")
+            else:
+                try:
+                    raw = uploaded.read()
+                    instruments, errors = PortfolioImporter(serializer).load(raw)
+                    if instruments:
+                        st.session_state.portfolio.extend(instruments)
+                        st.success(f"Загружено инструментов: {len(instruments)}")
+                    for e in errors:
+                        st.error(e)
+                    if not instruments and not errors:
+                        st.warning("Файл не содержит инструментов.")
+                    if instruments:
+                        st.session_state.show_import = False
+                        st.rerun()
+                except Exception as exc:
+                    st.error(f"Не удалось загрузить файл: {exc}")
+
+    # ── Панель экспорта ───────────────────────────────────────────────────────
+    if st.session_state.get('show_export'):
+        exp_col1, exp_col2 = st.columns([1, 3])
+        with exp_col1:
+            export_fmt = st.selectbox("Формат", FORMAT_LABELS, key="export_fmt")
+        serializer = SERIALIZERS[export_fmt]
+        raw_export = PortfolioExporter(serializer).save(st.session_state.portfolio)
+        with exp_col2:
+            st.write("")
+            st.download_button(
+                label=f"⬇ Скачать портфель (.{serializer.file_extension})",
+                data=raw_export,
+                file_name=f"portfolio.{serializer.file_extension}",
+                mime=serializer.mime_type,
+            )
+
+    # ── Навигация ─────────────────────────────────────────────────────────────
+    selected_id = st.selectbox(
+        "Выберите инструмент для анализа",
+        [c.instrument_id for c in st.session_state.portfolio]
+    )
+    if st.button("Перейти к расчету VaR"):
+        st.session_state.selected_id = selected_id
+        st.switch_page("ui/var_page.py")
+    if st.button("📊 Перейти к расчету VaR портфеля"):
+        st.switch_page("ui/portfolio_var_page.py")
 else:
     st.info("Портфель пуст")
+
+    # Импорт доступен и когда портфель пуст
+    if st.session_state.get('show_import'):
+        uploaded = st.file_uploader(
+            "Выберите файл портфеля",
+            type=list(EXT_TO_SERIALIZER.keys()),
+            key="portfolio_upload_empty",
+        )
+        if uploaded is not None:
+            ext = uploaded.name.rsplit(".", 1)[-1].lower()
+            serializer = EXT_TO_SERIALIZER.get(ext)
+            if serializer is None:
+                st.error(f"Неподдерживаемый формат файла: .{ext}")
+            else:
+                try:
+                    raw = uploaded.read()
+                    instruments, errors = PortfolioImporter(serializer).load(raw)
+                    if instruments:
+                        st.session_state.portfolio.extend(instruments)
+                        st.success(f"Загружено инструментов: {len(instruments)}")
+                    for e in errors:
+                        st.error(e)
+                    if not instruments and not errors:
+                        st.warning("Файл не содержит инструментов.")
+                    if instruments:
+                        st.session_state.show_import = False
+                        st.rerun()
+                except Exception as exc:
+                    st.error(f"Не удалось загрузить файл: {exc}")
+    else:
+        if st.button("📥 Импорт портфеля"):
+            st.session_state.show_import = True
+            st.rerun()

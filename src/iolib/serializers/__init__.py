@@ -11,3 +11,11 @@ SERIALIZERS: dict = {
 }
 
 FORMAT_LABELS = list(SERIALIZERS.keys())  # ["json", "yaml", "csv", "excel"]
+
+EXT_TO_SERIALIZER: dict = {
+    "json":  SERIALIZERS["json"],
+    "yaml":  SERIALIZERS["yaml"],
+    "yml":   SERIALIZERS["yaml"],
+    "csv":   SERIALIZERS["csv"],
+    "xlsx":  SERIALIZERS["excel"],
+}

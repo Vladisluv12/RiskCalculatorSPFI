@@ -18,8 +18,6 @@ render_report_sidebar()
 st.title("📊 VaR портфеля")
 
 portfolio = st.session_state.get("portfolio", [])
-
-# Фильтруем инструменты, которые умеем оценивать
 supported = [
     inst for inst in portfolio
     if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract))
@@ -32,32 +30,18 @@ if len(supported) < 2:
     )
     st.stop()
 
-# ──────────────────────────────────────────────
-# Параметры расчета
-# ──────────────────────────────────────────────
+# ── Параметры ─────────────────────────────────────────────────────────────────
 st.subheader("Параметры расчета")
 row1_col1, row1_col2, row1_col3 = st.columns(3)
-
 with row1_col1:
-    type_of_var = st.selectbox(
-        "Метод расчета VaR",
-        options=["Исторический", "Параметрический"],
-        index=0,
-    )
+    type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
 with row1_col2:
     conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=0)
 with row1_col3:
     horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=1)
 
-window = st.slider(
-    "Количество дней в истории",
-    min_value=252,
-    max_value=2520,
-    value=252,
-    step=252,
-)
+window = st.slider("Количество дней в истории", min_value=252, max_value=2520, value=252, step=252)
 
-# Дата расчёта берётся по первому инструменту в портфеле (самый ранний старт)
 earliest_start = min(inst.start_date.date() for inst in supported)
 calc_end_date = earliest_start - timedelta(days=1)
 calc_start_date = calc_end_date - timedelta(days=int(window))
@@ -70,292 +54,255 @@ with row2_col2:
 
 st.divider()
 
-# ──────────────────────────────────────────────
-# Расчёт
-# ──────────────────────────────────────────────
 data_provider = st.session_state.get("data_provider")
 if data_provider is None:
-    st.error(
-        "Источник данных не инициализирован. "
-        "Перейдите на страницу портфеля и нажмите «Применить»."
-    )
+    st.error("Источник данных не инициализирован. Перейдите на страницу портфеля и нажмите «Применить».")
     st.stop()
 
 calc_start = datetime.combine(calc_start_date, time.min)
 calc_end = datetime.combine(calc_end_date, time.max)
-
-# Подготавливаем инструменты с расширенным диапазоном (как в var_page)
 horizon_td = timedelta(days=max(1, int(horizon)))
 var_instruments = [
     replace(inst, start_date=calc_start, end_date=calc_end + horizon_td)
     for inst in supported
 ]
 
-try:
-    if type_of_var == "Исторический":
-        result = var.portfolio_historical(
-            data_provider,
-            var_instruments,
-            calc_start,
-            calc_end,
-            confidence_level=conf_level,
-            window=window,
-            horizon=int(horizon),
-        )
-    else:
-        result = var.portfolio_parametric(
-            data_provider,
-            var_instruments,
-            calc_start,
-            calc_end,
-            confidence_level=conf_level,
-            window=window,
-            horizon=int(horizon),
-        )
+_pvar_params_key = (
+    type_of_var, conf_level, int(horizon), window,
+    tuple(inst.instrument_id for inst in supported),
+)
 
-    pnl_matrix: pd.DataFrame = result["pnl_matrix"]
-    individual_vars: dict = result["individual_vars"]
-    corr_matrix: pd.DataFrame = result["corr_matrix"]
-    diversified_var: float = result["diversified_var"]
-    undiversified_var: float = result["undiversified_var"]
-    uncorrelated_var: float = result["uncorrelated_var"]
+_cached = st.session_state.get("pvar_main")
+_stale = _cached is not None and _cached.get("_params_key") != _pvar_params_key
 
-    # Расчёт ES портфеля
-    if type_of_var == "Исторический":
-        portfolio_es: float = var.portfolio_historical_es(
-            data_provider, var_instruments, calc_start, calc_end,
-            confidence_level=conf_level, window=window, horizon=int(horizon),
-        )
-    else:
-        portfolio_es: float = var.portfolio_parametric_es(
-            data_provider, var_instruments, calc_start, calc_end,
-            confidence_level=conf_level, window=window, horizon=int(horizon),
-        )
+if _stale:
+    st.warning("Параметры изменились — результаты устарели. Нажмите «Рассчитать VaR» для обновления.")
 
-    # ──────────────────────────────────────────────
-    # Таблица экспозиций
-    # ──────────────────────────────────────────────
-    st.subheader("Матрица экспозиций на факторы риска")
+# ── Кнопки действий ───────────────────────────────────────────────────────────
+calc_clicked = st.button("▶ Рассчитать VaR портфеля", type="primary")
 
-    # Уникальные валютные пары = факторы риска
-    risk_factors = sorted({inst.currency_pair.value for inst in supported})
+# ── Расчёт ────────────────────────────────────────────────────────────────────
+if calc_clicked:
+    try:
+        with st.spinner("Расчёт VaR портфеля..."):
+            if type_of_var == "Исторический":
+                result = var.portfolio_historical(
+                    data_provider, var_instruments, calc_start, calc_end,
+                    confidence_level=conf_level, window=window, horizon=int(horizon),
+                )
+                portfolio_es = var.portfolio_historical_es(
+                    data_provider, var_instruments, calc_start, calc_end,
+                    confidence_level=conf_level, window=window, horizon=int(horizon),
+                )
+            else:
+                result = var.portfolio_parametric(
+                    data_provider, var_instruments, calc_start, calc_end,
+                    confidence_level=conf_level, window=window, horizon=int(horizon),
+                )
+                portfolio_es = var.portfolio_parametric_es(
+                    data_provider, var_instruments, calc_start, calc_end,
+                    confidence_level=conf_level, window=window, horizon=int(horizon),
+                )
 
-    rows = []
-    for inst in supported:
-        inst_pair = inst.currency_pair.value
-        row = {"Инструмент": inst.instrument_id, "VaR инструмента": individual_vars.get(inst.instrument_id, 0.0)}
-        for rf in risk_factors:
-            row[rf] = individual_vars.get(inst.instrument_id, 0.0) if inst_pair == rf else 0.0
-        rows.append(row)
+        corr_matrix: pd.DataFrame = result["corr_matrix"]
+        n = corr_matrix.shape[0]
+        mask = ~np.eye(n, dtype=bool)
+        off_diag = corr_matrix.values[mask]
+        avg_abs_corr = float(np.mean(np.abs(off_diag)))
+        if avg_abs_corr > 0.7:
+            recommended = "undiversified"
+        elif avg_abs_corr < 0.3:
+            recommended = "uncorrelated"
+        else:
+            recommended = "diversified"
 
-    # Итоговая строка портфеля
-    total_row = {"Инструмент": "Портфель (итого)", "VaR инструмента": sum(individual_vars.values())}
+        st.session_state["pvar_main"] = {
+            "_params_key": _pvar_params_key,
+            "pnl_matrix": result["pnl_matrix"],
+            "individual_vars": result["individual_vars"],
+            "corr_matrix": corr_matrix,
+            "diversified_var": result["diversified_var"],
+            "undiversified_var": result["undiversified_var"],
+            "uncorrelated_var": result["uncorrelated_var"],
+            "portfolio_es": portfolio_es,
+            "recommended": recommended,
+            "type_of_var": type_of_var,
+            "conf_level": conf_level,
+            "horizon": horizon,
+            "window": window,
+        }
+        # Сбрасываем CVaR/IVaR при пересчёте основного VaR
+        st.session_state.pop("pvar_contrib", None)
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Ошибка расчета VaR портфеля: {exc.__class__.__name__}: {exc}")
+        with st.expander("Посмотреть детали ошибки"):
+            st.code(traceback.format_exc())
+
+# ── Результаты ────────────────────────────────────────────────────────────────
+if not st.session_state.get("pvar_main"):
+    st.divider()
+    if st.button("Перейти к расчёту LVaR портфеля"):
+        st.switch_page("ui/lvar_page.py")
+    st.stop()
+
+r = st.session_state["pvar_main"]
+pnl_matrix: pd.DataFrame = r["pnl_matrix"]
+individual_vars: dict = r["individual_vars"]
+corr_matrix: pd.DataFrame = r["corr_matrix"]
+diversified_var: float = r["diversified_var"]
+undiversified_var: float = r["undiversified_var"]
+uncorrelated_var: float = r["uncorrelated_var"]
+portfolio_es: float = r["portfolio_es"]
+recommended: str = r["recommended"]
+
+st.divider()
+
+# Матрица экспозиций
+st.subheader("Матрица экспозиций на факторы риска")
+risk_factors = sorted({inst.currency_pair.value for inst in supported})
+rows = []
+for inst in supported:
+    inst_pair = inst.currency_pair.value
+    row = {"Инструмент": inst.instrument_id, "VaR инструмента": individual_vars.get(inst.instrument_id, 0.0)}
     for rf in risk_factors:
-        total_row[rf] = sum(
-            individual_vars.get(inst.instrument_id, 0.0)
-            for inst in supported
-            if inst.currency_pair.value == rf
-        )
-    rows.append(total_row)
-
-    exposure_df = pd.DataFrame(rows).set_index("Инструмент")
-    exposure_df = exposure_df[risk_factors + ["VaR инструмента"]]
-    st.dataframe(
-        exposure_df.style.format("{:.4f}"),
-        width="stretch",
+        row[rf] = individual_vars.get(inst.instrument_id, 0.0) if inst_pair == rf else 0.0
+    rows.append(row)
+total_row = {"Инструмент": "Портфель (итого)", "VaR инструмента": sum(individual_vars.values())}
+for rf in risk_factors:
+    total_row[rf] = sum(
+        individual_vars.get(inst.instrument_id, 0.0)
+        for inst in supported if inst.currency_pair.value == rf
     )
+rows.append(total_row)
+exposure_df = pd.DataFrame(rows).set_index("Инструмент")
+exposure_df = exposure_df[risk_factors + ["VaR инструмента"]]
+st.dataframe(exposure_df.style.format("{:.4f}"), width="stretch")
 
-    st.divider()
+st.divider()
 
-    # ──────────────────────────────────────────────
-    # Матрица корреляций
-    # ──────────────────────────────────────────────
-    st.subheader("Матрица корреляций PnL")
+# Матрица корреляций
+st.subheader("Матрица корреляций PnL")
+labels = corr_matrix.columns.tolist()
+fig_corr = go.Figure(go.Heatmap(
+    z=corr_matrix.values, x=labels, y=labels,
+    colorscale="RdBu", zmin=-1, zmax=1,
+    text=np.round(corr_matrix.values, 2), texttemplate="%{text}", showscale=True,
+))
+fig_corr.update_layout(
+    title="Корреляция доходностей инструментов", template="plotly_white",
+    height=400, yaxis={"autorange": "reversed"},
+)
+st.plotly_chart(fig_corr, width="stretch")
 
-    labels = corr_matrix.columns.tolist()
-    fig_corr = go.Figure(
-        go.Heatmap(
-            z=corr_matrix.values,
-            x=labels,
-            y=labels,
-            colorscale="RdBu",
-            zmin=-1,
-            zmax=1,
-            text=np.round(corr_matrix.values, 2),
-            texttemplate="%{text}",
-            showscale=True,
-        )
-    )
-    fig_corr.update_layout(
-        title="Корреляция доходностей инструментов",
-        template="plotly_white",
-        height=400,
-        yaxis={"autorange": "reversed"},
-    )
-    st.plotly_chart(fig_corr, width="stretch")
+n = corr_matrix.shape[0]
+mask = ~np.eye(n, dtype=bool)
+off_diag = corr_matrix.values[mask]
+sc1, sc2, sc3 = st.columns(3)
+sc1.metric("Средняя корреляция", f"{float(np.mean(off_diag)):.3f}")
+sc2.metric("Минимальная корреляция", f"{float(np.min(off_diag)):.3f}")
+sc3.metric("Максимальная корреляция", f"{float(np.max(off_diag)):.3f}")
 
-    # Статистика корреляций (внедиагональные элементы)
-    n = corr_matrix.shape[0]
-    mask = ~np.eye(n, dtype=bool)
-    off_diag = corr_matrix.values[mask]
-    avg_corr = float(np.mean(off_diag))
-    min_corr = float(np.min(off_diag))
-    max_corr = float(np.max(off_diag))
-    avg_abs_corr = float(np.mean(np.abs(off_diag)))
+st.divider()
 
-    sc1, sc2, sc3 = st.columns(3)
-    sc1.metric("Средняя корреляция", f"{avg_corr:.3f}")
-    sc2.metric("Минимальная корреляция", f"{min_corr:.3f}")
-    sc3.metric("Максимальная корреляция", f"{max_corr:.3f}")
+# VaR портфеля
+st.subheader("VaR портфеля")
+if r["type_of_var"] == "Исторический":
+    st.latex(r"VaR_P^{\text{диверс.}} = \sqrt{\vec{VaR}^{\,T} \cdot R \cdot \vec{VaR}}")
+else:
+    st.latex(r"VaR_P = Z_c \times \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2w_1w_2\sigma_1\sigma_2\rho_{1,2}}")
 
-    st.divider()
+hints = {
+    "diversified": "ρ ∊ [0.3;0.7].",
+    "undiversified": "ρ > 0.7",
+    "uncorrelated": "ρ < 0.3.",
+}
+var_types = ["diversified", "undiversified", "uncorrelated"]
+var_descs = ["Диверсифицированный VaR", "Недиверсифицированный VaR", "VaR (некоррел. позиции)"]
+var_vals = [diversified_var, undiversified_var, uncorrelated_var]
+rec_ind = var_types.index(recommended)
 
-    # ──────────────────────────────────────────────
-    # Выбор рекомендованного VaR по матрице корреляций
-    # ──────────────────────────────────────────────
-    if avg_abs_corr > 0.7:
-        recommended = "undiversified"
-    elif avg_abs_corr < 0.3:
-        recommended = "uncorrelated"
-    else:
-        recommended = "diversified"
+st.subheader("ES портфеля")
+if r["type_of_var"] == "Исторический":
+    st.latex(r"ES_P = \left|\,\mathbb{E}\left[PnL_P \mid PnL_P \leq Q_{\alpha}\right]\right|")
+else:
+    st.latex(r"ES_P = \left|-\mu_P + \sigma_P\,\frac{\varphi(z_{\alpha})}{\alpha}\right|\cdot\sqrt{horizon}")
+st.divider()
 
-    # ──────────────────────────────────────────────
-    # Три метрики VaR портфеля
-    # ──────────────────────────────────────────────
-    st.subheader("VaR портфеля")
-
-    if type_of_var == "Исторический":
-        st.latex(
-            r"VaR_P^{\text{диверс.}} = \sqrt{\vec{VaR}^{\,T} \cdot R \cdot \vec{VaR}}"
-            
-        )
-    else:
-        st.latex(
-            r"VaR_P = Z_c \times \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2w_1w_2\sigma_1\sigma_2\rho_{1,2}}"
-        )
-
-    hints = {
-        "diversified": "ρ ∊ [0.3;0.7].",
-        "undiversified": "ρ > 0.7",
-        "uncorrelated": "ρ < 0.3.",
-    }
-
-    # ES портфеля
-    st.subheader("ES портфеля")
-    if type_of_var == "Исторический":
-        st.latex(r"ES_P = \left|\,\mathbb{E}\left[PnL_P \mid PnL_P \leq Q_{\alpha}\right]\right|")
-    else:
-        st.latex(r"ES_P = \left|-\mu_P + \sigma_P\,\frac{\varphi(z_{\alpha})}{\alpha}\right|\cdot\sqrt{horizon}")
-    st.divider()
-
-    m1, m2, m3 = st.columns(3)
-    
-    var_types = ["diversified", "undiversified", "uncorrelated"]
-    var_descs = ["Диверсифицированный VaR", "Недиверсифицированный VaR", "VaR (некоррел. позиции)"]
-    var_vals = [diversified_var, undiversified_var, uncorrelated_var]
-    rec_ind = var_types.index(recommended)
-
-    with m1:
-        st.metric(
-            var_descs[0],
-            f"{var_vals[0]:.4f}",
-        )
-        st.success(hints[var_types[rec_ind]])
-
-
-
+m1, m2 = st.columns(2)
+with m1:
+    st.metric(var_descs[rec_ind], f"{var_vals[rec_ind]:.4f}")
+    st.success(hints[var_types[rec_ind]])
+with m2:
     st.metric("Expected Shortfall портфеля", f"{portfolio_es:.4f}")
 
-    st.caption(
-        f"Метод: **{type_of_var}** | "
-        f"Доверительный уровень: **{conf_level * 100:.0f}%** | "
-        f"Горизонт: **{horizon} дн.** | "
-        f"Окно: **{window} дн.**"
-    )
+st.caption(
+    f"Метод: **{r['type_of_var']}** | "
+    f"Доверительный уровень: **{r['conf_level'] * 100:.0f}%** | "
+    f"Горизонт: **{r['horizon']} дн.** | "
+    f"Окно: **{r['window']} дн.**"
+)
 
-    st.divider()
+st.divider()
 
-    # ──────────────────────────────────────────────
-    # Детализация по инструментам
-    # ──────────────────────────────────────────────
-    st.subheader("VaR по инструментам")
-    detail_rows = [
-        {
-            "Инструмент": iid,
-            "Метод": type_of_var,
-            "Доверительный уровень": f"{conf_level * 100:.0f}%",
-            "Горизонт (дн.)": horizon,
-            "VaR": round(v, 6),
-        }
-        for iid, v in individual_vars.items()
-    ]
-    st.dataframe(pd.DataFrame(detail_rows).set_index("Инструмент"), width="stretch")
+# VaR по инструментам
+st.subheader("VaR по инструментам")
+detail_rows = [
+    {
+        "Инструмент": iid,
+        "Метод": r["type_of_var"],
+        "Доверительный уровень": f"{r['conf_level'] * 100:.0f}%",
+        "Горизонт (дн.)": r["horizon"],
+        "VaR": round(v, 6),
+    }
+    for iid, v in individual_vars.items()
+]
+st.dataframe(pd.DataFrame(detail_rows).set_index("Инструмент"), width="stretch")
 
-    # ──────────────────────────────────────────────
-    # Гистограмма PnL портфеля
-    # ──────────────────────────────────────────────
-    st.subheader("Распределение PnL портфеля")
-    portfolio_pnl = pnl_matrix.sum(axis=1).sort_values().reset_index(drop=True)
-    alpha = 1 - conf_level
-    var_cutoff_idx = round(len(portfolio_pnl) * alpha)
+# Гистограмма PnL
+st.subheader("Распределение PnL портфеля")
+portfolio_pnl = pnl_matrix.sum(axis=1).sort_values().reset_index(drop=True)
+alpha_val = 1 - r["conf_level"]
+var_cutoff_idx = round(len(portfolio_pnl) * alpha_val)
+fig_pnl = go.Figure()
+fig_pnl.add_trace(go.Bar(
+    x=list(range(len(portfolio_pnl))), y=portfolio_pnl.values,
+    name="Отсортированный PnL портфеля", hovertemplate="PnL: %{y:.4f}<extra></extra>",
+))
+fig_pnl.add_vline(
+    x=var_cutoff_idx, line_dash="dash", line_color="black", line_width=2,
+    annotation_text=f"Граница VaR {r['conf_level'] * 100:.0f}%", annotation_position="top left",
+)
+fig_pnl.update_layout(xaxis_title="Порядковый номер", yaxis_title="PnL", template="plotly_white", hovermode="x unified")
+st.plotly_chart(fig_pnl, width="stretch")
 
-    fig_pnl = go.Figure()
-    fig_pnl.add_trace(
-        go.Bar(
-            x=list(range(len(portfolio_pnl))),
-            y=portfolio_pnl.values,
-            name="Отсортированный PnL портфеля",
-            hovertemplate="PnL: %{y:.4f}<extra></extra>",
-        )
-    )
-    fig_pnl.add_vline(
-        x=var_cutoff_idx,
-        line_dash="dash",
-        line_color="black",
-        line_width=2,
-        annotation_text=f"Граница VaR {conf_level * 100:.0f}%",
-        annotation_position="top left",
-    )
-    fig_pnl.update_layout(
-        xaxis_title="Порядковый номер",
-        yaxis_title="PnL",
-        template="plotly_white",
-        hovermode="x unified",
-    )
-    st.plotly_chart(fig_pnl, width="stretch")
+st.divider()
 
-    # ──────────────────────────────────────────────
-    # IVaR и CVaR
-    # ──────────────────────────────────────────────
-    st.divider()
-    st.subheader("Вклад инструментов в риск портфеля")
-    st.latex(r"CVaR_i = \rho_{i,P} \cdot VaR_i, \quad \sum_i CVaR_i \approx VaR_{portfolio}")
-    st.latex(r"IVaR_i = VaR_{portfolio} - VaR_{portfolio \setminus i}")
+# ── IVaR и CVaR ───────────────────────────────────────────────────────────────
+st.subheader("Вклад инструментов в риск портфеля")
+st.latex(r"CVaR_i = \rho_{i,P} \cdot VaR_i, \quad \sum_i CVaR_i \approx VaR_{portfolio}")
+st.latex(r"IVaR_i = VaR_{portfolio} - VaR_{portfolio \setminus i}")
 
-    recommended_var_value = {
-        "diversified": diversified_var,
-        "undiversified": undiversified_var,
-        "uncorrelated": uncorrelated_var,
-    }[recommended]
-    method_key = "historical" if type_of_var == "Исторический" else "parametric"
+recommended_var_value = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
+method_key = "historical" if r["type_of_var"] == "Исторический" else "parametric"
 
-    if st.button("Рассчитать IVaR и CVaR"):
+_pvar_contrib_key = _pvar_params_key
+_contrib_stale = (
+    "pvar_contrib" in st.session_state
+    and st.session_state["pvar_contrib"].get("_params_key") != _pvar_contrib_key
+)
+if _contrib_stale:
+    st.warning("Параметры изменились — CVaR/IVaR устарели. Нажмите «Рассчитать IVaR и CVaR» для обновления.")
+
+if st.button("Рассчитать IVaR и CVaR"):
+    try:
         with st.spinner("Расчёт..."):
             cvar_dict = var.compute_cvar(pnl_matrix, individual_vars)
             ivar_dict = var.portfolio_ivar(
-                data_provider,
-                var_instruments,
-                calc_start,
-                calc_end,
-                confidence_level=conf_level,
-                window=window,
-                horizon=int(horizon),
-                method=method_key,
-                recommended_var_type=recommended,
-                var_full=recommended_var_value,
+                data_provider, var_instruments, calc_start, calc_end,
+                confidence_level=r["conf_level"], window=r["window"], horizon=int(r["horizon"]),
+                method=method_key, recommended_var_type=recommended, var_full=recommended_var_value,
             )
-
         contrib_rows = []
         for iid, var_i in individual_vars.items():
             cvar_i = cvar_dict.get(iid, 0.0)
@@ -368,66 +315,71 @@ try:
                 "IVaR_i": ivar_i,
                 "IVaR_i %": ivar_i / recommended_var_value * 100 if recommended_var_value else 0.0,
             })
-
-        contrib_df = pd.DataFrame(contrib_rows).set_index("Инструмент")
-        st.dataframe(
-            contrib_df.style.format({
-                "VaR_i": "{:.4f}",
-                "CVaR_i": "{:.4f}",
-                "CVaR_i %": "{:.1f}%",
-                "IVaR_i": "{:.4f}",
-                "IVaR_i %": "{:.1f}%",
-            }),
-            width="stretch",
-        )
-
-        cvar_sum = sum(cvar_dict.values())
-        
-    st.divider()
-    if st.button("Перейти к расчёту LVaR портфеля"):
-        st.switch_page("ui/lvar_page.py")
-
-    st.divider()
-    # ── Экспорт результатов ───────────────────────────────────────────────
-    exp_col1, exp_col2 = st.columns([1, 2])
-    with exp_col1:
-        pvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="pvar_res_fmt")
-    with exp_col2:
-        st.write("")
-        st.write("")
-        pvar_results = {
-            "individual_vars": pd.DataFrame.from_dict(individual_vars, orient="index", columns=["VaR"]),
-            "corr_matrix": corr_matrix,
-            "summary": {
-                "diversified_var": diversified_var,
-                "undiversified_var": undiversified_var,
-                "uncorrelated_var": uncorrelated_var,
-                "portfolio_es": portfolio_es,
-            },
+        st.session_state["pvar_contrib"] = {
+            "_params_key": _pvar_contrib_key,
+            "contrib_df": pd.DataFrame(contrib_rows).set_index("Инструмент"),
+            "cvar_sum": sum(cvar_dict.values()),
         }
-        pvar_serializer = SERIALIZERS[pvar_fmt]
-        raw_pvar = ResultsExporter(pvar_serializer).export(pvar_results)
-        st.download_button(
-            label=f"Скачать результаты (.{pvar_serializer.file_extension})",
-            data=raw_pvar,
-            file_name=f"portfolio_var.{pvar_serializer.file_extension}",
-            mime=pvar_serializer.mime_type,
-        )
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Ошибка расчета CVaR/IVaR: {exc.__class__.__name__}: {exc}")
+        with st.expander("Детали ошибки"):
+            st.code(traceback.format_exc())
 
-    # ── Добавить в отчёт ─────────────────────────────────────────────────
-    rb = st.session_state.get("report_builder")
-    if rb is not None:
-        page_id = "portfolio_var_page"
-        in_report = rb.has_section(page_id)
-        label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
-        if st.button(label, key="pvar_report_btn"):
-            if in_report:
-                rb.remove_section(page_id)
-            else:
-                rb.add_section(page_id, "Portfolio VaR / ES", pvar_results)
-            st.rerun()
+contrib_df = None
+if "pvar_contrib" in st.session_state:
+    contrib_df = st.session_state["pvar_contrib"]["contrib_df"]
+    cvar_sum = st.session_state["pvar_contrib"]["cvar_sum"]
+    st.dataframe(
+        contrib_df.style.format({
+            "VaR_i": "{:.4f}", "CVaR_i": "{:.4f}",
+            "CVaR_i %": "{:.1f}%", "IVaR_i": "{:.4f}", "IVaR_i %": "{:.1f}%",
+        }),
+        width="stretch",
+    )
+    st.caption(f"Сумма CVaR: {cvar_sum:.4f}")
 
-except Exception as exc:
-    st.error(f"Ошибка расчета VaR портфеля: {exc.__class__.__name__}: {exc}")
-    with st.expander("Посмотреть детали ошибки"):
-        st.code(traceback.format_exc())
+st.divider()
+
+# ── Экспорт и отчёт ───────────────────────────────────────────────────────────
+pvar_results = {
+    "individual_vars": pd.DataFrame.from_dict(individual_vars, orient="index", columns=["VaR"]),
+    "corr_matrix": corr_matrix,
+    "summary": {
+        f"portfolio_{recommended}_var": var_vals[rec_ind],
+        "portfolio_es": portfolio_es,
+    },
+}
+if contrib_df is not None:
+    pvar_results["contrib_ivar_cvar"] = contrib_df
+
+exp_col1, exp_col2 = st.columns([1, 2])
+with exp_col1:
+    pvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="pvar_res_fmt")
+pvar_serializer = SERIALIZERS[pvar_fmt]
+raw_pvar = ResultsExporter(pvar_serializer).export(pvar_results)
+with exp_col2:
+    st.write("")
+    st.write("")
+    st.download_button(
+        label=f"Скачать результаты (.{pvar_serializer.file_extension})",
+        data=raw_pvar,
+        file_name=f"portfolio_var.{pvar_serializer.file_extension}",
+        mime=pvar_serializer.mime_type,
+    )
+
+rb = st.session_state.get("report_builder")
+if rb is not None:
+    page_id = "portfolio_var_page"
+    in_report = rb.has_section(page_id)
+    label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
+    if st.button(label, key="pvar_report_btn"):
+        if in_report:
+            rb.remove_section(page_id)
+        else:
+            rb.add_section(page_id, "Portfolio VaR / ES", pvar_results)
+        st.rerun()
+
+st.divider()
+if st.button("Перейти к расчёту LVaR портфеля"):
+    st.switch_page("ui/lvar_page.py")

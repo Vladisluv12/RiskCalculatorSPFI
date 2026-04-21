@@ -40,7 +40,6 @@ class DataProvider:
         return df
 
 
-    # @st.cache_data
     def get_currency_data(self, ticker: str, first_date: datetime, last_date: datetime) -> pd.DataFrame:
         """
         Загружает данные по тикеру и возвращает последние N дней.
@@ -56,7 +55,6 @@ class DataProvider:
         mask = (df.index >= start) & (df.index <= end)
         return df.loc[mask]
 
-    # @st.cache_data
     def get_curve_data(self, currency_name: str, first_date: datetime, last_date: datetime) -> pd.DataFrame:
         """
         Загружает данные по кривой и возвращает DataFrame.

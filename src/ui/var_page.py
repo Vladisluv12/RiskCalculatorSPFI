@@ -205,7 +205,7 @@ if selected_id:
             if rb is not None:
                 page_id = f"var_{selected_id}"
                 in_report = rb.has_section(page_id)
-                label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
+                label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
                 if st.button(label, key="var_report_btn"):
                     if in_report:
                         rb.remove_section(page_id)

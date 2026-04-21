@@ -58,17 +58,16 @@ st.divider()
 with st.expander("Описание используемой модели ликвидности"):
     st.markdown(
         """
-**Моделель LVaR**
 
 Cпред bid/ask моделируется как случайная величина, зависящая от волатильности курса.
-Ликвидностная надбавка (Liquidity cost) отражает стоимость закрытия позиции через рынок.
+Liquidity cost отражает стоимость закрытия позиции через рынок.
 
 ---
 
-**Шаг 1 - EWMA-волатильность**:
+**EWMA-волатильность**:
 $$\\sigma^2(t) = \\lambda \\cdot \\sigma^2(t-1) + (1-\\lambda) \\cdot r^2(t)$$
 
-**Шаг 2 - Оценка спреда**:
+**Оценка спреда**:
 $$s\\%(t) = \\max\\bigl(k \\cdot \\sigma_{\\text{ewma}}(t) \\cdot \\sqrt{\\text{tenor}},\\; s_{\\text{floor}}\\bigr)$$
 
 С поправкой на направление и размер позиции:
@@ -77,11 +76,13 @@ $$s\\%_{\\text{adj}}(t) = s\\%(t) \\times d_{\\text{adj}} \\times q_{\\text{adj}
 где $d_{\\text{adj}} = 1 + \\alpha$ (BUY) или $1 - \\alpha$ (SELL),
 $\\;q_{\\text{adj}} = 1 + 0.5 \\times \\dfrac{N}{ADV}$ (если ADV задан).
 
-**Шаг 3 - Liquidity cost**:
-$$LC^{\\text{normal}} = \\tfrac{1}{2}\\,|PV|\\cdot s\\%_{\\text{last}}$$
-$$LC^{\\text{stressed}} = \\tfrac{1}{2}\\,|PV|\\cdot\\bigl(s\\%_{\\text{last}} + z_\\alpha \\cdot \\sigma_{s\\%}\\bigr)$$
+**Liquidity cost**:
+$$LC_{\\text{normal}} = \\tfrac{1}{2}\\,|PV|\\cdot s\\%_{\\text{last}}$$
 
-**Шаг 4 - LVaR с T-дневной равномерной ликвидацией**:
+
+$$LC_{\\text{stressed}} = \\tfrac{1}{2}\\,|PV|\\cdot\\bigl(s\\%_{\\text{last}} + z_\\alpha \\cdot \\sigma_{s\\%}\\bigr)$$
+
+**LVaR с T-дневной равномерной ликвидацией**:
 $$LVaR_T = \\frac{VaR + LC}{\\sqrt{\\dfrac{(1+T)(1+2T)}{6T}}}$$
         """
     )
@@ -93,17 +94,17 @@ st.subheader("Параметры ликвидности")
 lc1, lc2, lc3 = st.columns(3)
 with lc1:
     k = st.number_input(
-        "k — масштаб спреда",
+        "k - масштаб спреда",
         value=3.0, min_value=0.1, step=0.1,
         help=(
             "Калибровочный коэффициент в формуле спреда:\n"
             "s%(t) = max(k × σ_ewma(t) × √tenor, s_floor).\n"
-            "Чем выше k — тем больше спред при той же волатильности. "
+            "Чем выше k - тем больше спред при той же волатильности. "
             "Для российского рынка типично 2–4."
         ),
     )
     floor_spread = st.number_input(
-        "s_floor — минимальный спред",
+        "s_floor - минимальный спред",
         value=0.001, min_value=0.0001, step=0.0001, format="%.4f",
         help=(
             "Нижняя граница спреда (пол): даже при нулевой волатильности\n"
@@ -113,7 +114,7 @@ with lc1:
     )
 with lc2:
     alpha = st.number_input(
-        "α — асимметрия BUY/SELL",
+        "α - асимметрия BUY/SELL",
         value=0.10, min_value=0.0, max_value=0.5, step=0.01,
         help=(
             "Поправка на сторону сделки:\n"
@@ -123,7 +124,7 @@ with lc2:
         ),
     )
     lambda_ = st.number_input(
-        "λ — коэффициент затухания EWMA",
+        "λ - коэффициент затухания EWMA",
         value=0.94, min_value=0.50, max_value=0.999, step=0.01,
         help=(
             "Параметр экспоненциального взвешивания волатильности:\n"
@@ -133,7 +134,7 @@ with lc2:
     )
 with lc3:
     T = st.number_input(
-        "T — дней на ликвидацию",
+        "T - дней на ликвидацию",
         value=1, min_value=1, max_value=30,
         help=(
             "Число дней равномерной ликвидации позиции.\n"
@@ -160,6 +161,13 @@ st.divider()
 # Расчёт
 # ──────────────────────────────────────────────
 data_provider = st.session_state.get("data_provider")
+
+_lvar_params_key = (
+    type_of_var, conf_level, int(horizon), window,
+    float(k), float(floor_spread), float(alpha), float(lambda_), int(T),
+    tuple(sorted(avg_daily_volume.items())),
+    tuple(inst.instrument_id for inst in supported),
+)
 if data_provider is None:
     st.error("Источник данных не инициализирован. Перейдите на страницу портфеля и нажмите «Применить».")
     st.stop()
@@ -178,9 +186,15 @@ lvar_instruments = [
     for inst in supported
 ]
 
+_lvar_stale = (
+    "lvar_results" in st.session_state
+    and st.session_state["lvar_results"].get("_params_key") != _lvar_params_key
+)
+if _lvar_stale:
+    st.warning("Параметры изменились — результаты устарели. Нажмите «Рассчитать LVaR» для обновления.")
+
 if st.button("Рассчитать LVaR"):
     try:
-        # Сначала рассчитываем портфельный VaR (как на portfolio_var_page)
         with st.spinner("Расчёт VaR портфеля..."):
             if type_of_var == "Исторический":
                 var_result = var.portfolio_historical(
@@ -236,18 +250,6 @@ if st.button("Рассчитать LVaR"):
                 window=window,
             )
 
-        # ──────────────────────────────────────────────
-        # Формулы
-        # ──────────────────────────────────────────────
-        st.subheader("Формулы")
-        st.latex(r"LC^{normal} = \frac{1}{2}\,|PV|\,\cdot\,s\%")
-        st.latex(r"LC^{stressed} = \frac{1}{2}\,|PV|\,\cdot\,(s\% + z_\alpha \cdot \sigma_{spread})")
-        st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\frac{(1+T)(1+2T)}{6T}}}")
-
-        # ──────────────────────────────────────────────
-        # Таблица по инструментам
-        # ──────────────────────────────────────────────
-        st.subheader("LC по инструментам")
         rows = []
         instrument_lc = lvar_result["instrument_lc"]
         for inst in supported:
@@ -261,86 +263,111 @@ if st.button("Рассчитать LVaR"):
                 "LC (stressed)": lc['stressed'],
             })
         lc_df = pd.DataFrame(rows).set_index("Инструмент")
-        st.dataframe(
-            lc_df.style.format({
-                "Номинал": "{:,.0f}",
-                "s% adj": "{:.4%}",
-                "LC (normal)": "{:.4f}",
-                "LC (stressed)": "{:.4f}",
-            }),
-            width="stretch",
-        )
 
-        # ──────────────────────────────────────────────
-        # Метрики портфеля
-        # ──────────────────────────────────────────────
-        st.subheader("LVaR портфеля (в абсолютных значениях)")
-        lc_total = lvar_result["lc_total"]
-        var_portfolio_abs = lvar_result["var_portfolio_abs"]
-        total_abs_pv = lvar_result["total_abs_pv"]
-
-        mc1, mc2, mc3 = st.columns(3)
-        mc1.metric(
-            f"VaR портфеля ({recommended})",
-            f"{var_portfolio_abs:,.2f}",
-            help=f"Абсолютный VaR. Относительный VaR: {var_portfolio:.4f}",
-        )
-        mc2.metric("LC_total (normal)", f"{lc_total['normal']:,.2f}")
-        mc3.metric("LC_total (stressed)", f"{lc_total['stressed']:,.2f}")
-
-        ml1, ml2, ml3 = st.columns(3)
-        ml1.metric("LVaR (normal)", f"{lvar_result['lvar_normal']:,.2f}")
-        ml2.metric("LVaR (stressed)", f"{lvar_result['lvar_stressed']:,.2f}")
-        ml3.metric(f"T-фактор (T={T})", f"{lvar_result['t_factor']:.4f}")
-
-        st.caption(
-            f"Метод VaR: **{type_of_var}** | "
-            f"Уровень: **{conf_level*100:.0f}%** | "
-            f"Горизонт: **{horizon} дн.** | "
-            f"Окно: **{window} дн.** | "
-            f"Выбран VaR: **{recommended}** | "
-            f"|PV| портфеля: **{total_abs_pv:,.0f}**"
-        )
-
-        st.divider()
-        # ── Экспорт результатов ───────────────────────────────────────────────
-        lv_col1, lv_col2 = st.columns([1, 2])
-        with lv_col1:
-            lvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="lvar_res_fmt")
-        with lv_col2:
-            st.write("")
-            st.write("")
-            lvar_results = {
-                "instrument_lc": lc_df,
-                "lvar_normal": lvar_result["lvar_normal"],
-                "lvar_stressed": lvar_result["lvar_stressed"],
-                "var_portfolio_abs": var_portfolio_abs,
-                "lc_total_normal": lc_total["normal"],
-                "lc_total_stressed": lc_total["stressed"],
-            }
-            lvar_serializer = SERIALIZERS[lvar_fmt]
-            raw_lvar = ResultsExporter(lvar_serializer).export(lvar_results)
-            st.download_button(
-                label=f"Скачать результаты (.{lvar_serializer.file_extension})",
-                data=raw_lvar,
-                file_name=f"lvar.{lvar_serializer.file_extension}",
-                mime=lvar_serializer.mime_type,
-            )
-
-        # ── Добавить в отчёт ─────────────────────────────────────────────────
-        rb = st.session_state.get("report_builder")
-        if rb is not None:
-            page_id = "lvar_page"
-            in_report = rb.has_section(page_id)
-            label = "✓ Убрать из отчёта" if in_report else "+ Добавить в отчёт"
-            if st.button(label, key="lvar_report_btn"):
-                if in_report:
-                    rb.remove_section(page_id)
-                else:
-                    rb.add_section(page_id, "LVaR Portfolio", lvar_results)
-                st.rerun()
+        st.session_state["lvar_results"] = {
+            "_params_key": _lvar_params_key,
+            "instrument_lc": lc_df,
+            "lvar_normal": lvar_result["lvar_normal"],
+            "lvar_stressed": lvar_result["lvar_stressed"],
+            "var_portfolio_abs": lvar_result["var_portfolio_abs"],
+            "lc_total_normal": lvar_result["lc_total"]["normal"],
+            "lc_total_stressed": lvar_result["lc_total"]["stressed"],
+            "t_factor": lvar_result["t_factor"],
+            "total_abs_pv": lvar_result["total_abs_pv"],
+            "recommended": recommended,
+            "var_portfolio_rel": var_portfolio,
+            "type_of_var": type_of_var,
+            "conf_level": conf_level,
+            "horizon": horizon,
+            "window": window,
+            "T": T,
+        }
 
     except Exception as exc:
         st.error(f"Ошибка расчёта LVaR: {exc.__class__.__name__}: {exc}")
         with st.expander("Детали ошибки"):
             st.code(traceback.format_exc())
+
+# ── Результаты ───────────────────────────────────────────────────────────────
+if "lvar_results" in st.session_state:
+    res = st.session_state["lvar_results"]
+    lc_df = res["instrument_lc"]
+
+    st.subheader("Формулы")
+    st.latex(r"LC^{normal} = \frac{1}{2}\,|PV|\,\cdot\,s\%")
+    st.latex(r"LC^{stressed} = \frac{1}{2}\,|PV|\,\cdot\,(s\% + z_\alpha \cdot \sigma_{spread})")
+    st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\frac{(1+T)(1+2T)}{6T}}}")
+
+    st.subheader("LC по инструментам")
+    st.dataframe(
+        lc_df.style.format({
+            "Номинал": "{:,.0f}",
+            "s% adj": "{:.4%}",
+            "LC (normal)": "{:.4f}",
+            "LC (stressed)": "{:.4f}",
+        }),
+        width="stretch",
+    )
+
+    st.subheader("LVaR портфеля (в абсолютных значениях)")
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric(
+        f"VaR портфеля ({res['recommended']})",
+        f"{res['var_portfolio_abs']:,.2f}",
+        help=f"Абсолютный VaR. Относительный VaR: {res['var_portfolio_rel']:.4f}",
+    )
+    mc2.metric("LC_total (normal)", f"{res['lc_total_normal']:,.2f}")
+    mc3.metric("LC_total (stressed)", f"{res['lc_total_stressed']:,.2f}")
+
+    ml1, ml2, ml3 = st.columns(3)
+    ml1.metric("LVaR (normal)", f"{res['lvar_normal']:,.2f}")
+    ml2.metric("LVaR (stressed)", f"{res['lvar_stressed']:,.2f}")
+    ml3.metric(f"T-фактор (T={res['T']})", f"{res['t_factor']:.4f}")
+
+    st.caption(
+        f"Метод VaR: **{res['type_of_var']}** | "
+        f"Уровень: **{res['conf_level']*100:.0f}%** | "
+        f"Горизонт: **{res['horizon']} дн.** | "
+        f"Окно: **{res['window']} дн.** | "
+        f"Выбран VaR: **{res['recommended']}** | "
+        f"|PV| портфеля: **{res['total_abs_pv']:,.0f}**"
+    )
+
+    st.divider()
+
+    # ── Экспорт результатов ───────────────────────────────────────────────────
+    lvar_export_data = {
+        "instrument_lc": lc_df,
+        "lvar_normal": res["lvar_normal"],
+        "lvar_stressed": res["lvar_stressed"],
+        "var_portfolio_abs": res["var_portfolio_abs"],
+        "lc_total_normal": res["lc_total_normal"],
+        "lc_total_stressed": res["lc_total_stressed"],
+    }
+    lv_col1, lv_col2 = st.columns([1, 2])
+    with lv_col1:
+        lvar_fmt = st.selectbox("Формат", FORMAT_LABELS, key="lvar_res_fmt")
+    lvar_serializer = SERIALIZERS[lvar_fmt]
+    raw_lvar = ResultsExporter(lvar_serializer).export(lvar_export_data)
+    with lv_col2:
+        st.write("")
+        st.write("")
+        st.download_button(
+            label=f"Скачать результаты (.{lvar_serializer.file_extension})",
+            data=raw_lvar,
+            file_name=f"lvar.{lvar_serializer.file_extension}",
+            mime=lvar_serializer.mime_type,
+        )
+
+    # ── Добавить в отчёт ─────────────────────────────────────────────────────
+    rb = st.session_state.get("report_builder")
+    if rb is not None:
+        page_id = "lvar_page"
+        in_report = rb.has_section(page_id)
+        label = "Убрать из отчёта" if in_report else "Добавить в отчёт"
+        if st.button(label, key="lvar_report_btn"):
+            if in_report:
+                rb.remove_section(page_id)
+            else:
+                rb.add_section(page_id, "LVaR Portfolio", lvar_export_data)
+            st.rerun()

@@ -31,12 +31,18 @@ def render_portfolio_table(portfolio: list):
         if 'Swap points' in df.columns:
             column_config['Swap points'] = st.column_config.NumberColumn('Пункты', format='%.2f')
         st.dataframe(df, width="stretch", hide_index=True, column_config=column_config)
-        col1, col2, _ = st.columns([1, 1, 2])
+        col1, col2, col3, _ = st.columns([1.2, 0.8, 0.8, 1.5])
         with col1:
             if st.button('Очистить портфель', type='primary'):
                 st.session_state.portfolio = []
+                st.session_state.show_import = False
+                st.session_state.show_export = False
                 st.rerun()
-    with col2:
-        if st.button('Экспорт в CSV'):
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(label='Скачать CSV', data=csv, file_name='portfolio.csv', mime='text/csv')
+        with col2:
+            if st.button('📥 Импорт'):
+                st.session_state.show_import = not st.session_state.get('show_import', False)
+                st.session_state.show_export = False
+        with col3:
+            if st.button('📤 Экспорт'):
+                st.session_state.show_export = not st.session_state.get('show_export', False)
+                st.session_state.show_import = False
