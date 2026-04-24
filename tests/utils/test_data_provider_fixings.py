@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 import pytest
 import pandas as pd
 from datetime import datetime
-from utils.DataProvider import DataProvider
+from utils.DataProvider import DataProvider, _FIXING_FILENAMES
 from instruments.enums import FloatingIndex
 
 
@@ -49,3 +49,9 @@ def test_get_fixing_data_missing_file_raises():
     dp.filepath = '/nonexistent_path'
     with pytest.raises(FileNotFoundError):
         dp.get_fixing_data(FloatingIndex.RUONIA_COMP, datetime(2026, 1, 1), datetime(2026, 4, 30))
+
+
+@pytest.mark.parametrize("index", list(_FIXING_FILENAMES.keys()))
+def test_fixing_file_exists_on_disk(index):
+    path = os.path.join(DATA_DIR, 'fixings', _FIXING_FILENAMES[index])
+    assert os.path.exists(path), f"Missing fixing file for {index}: {path}"

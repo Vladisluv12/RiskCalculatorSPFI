@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import os
 
-_FIXING_FILENAMES: dict = {
+_FIXING_FILENAMES: dict[FloatingIndex, str] = {
     FloatingIndex.RUONIA_AVG:      "RUONIA Avg..csv",
     FloatingIndex.RUONIA_COMP:     "RUONIA Comp..csv",
     FloatingIndex.ESTR_COMP:       "ESTR_Comp.csv",
@@ -102,12 +102,16 @@ class DataProvider:
         first_date: datetime,
         last_date: datetime,
     ) -> pd.DataFrame:
+        """
+        Загружает исторические фиксинги для указанного плавающего индекса.
+        """
         filename = _FIXING_FILENAMES[index]
         filepath = os.path.join(self.filepath, 'fixings', filename)
         if not os.path.exists(filepath):
             raise FileNotFoundError(f'Файл фиксингов для {index.value} не найден.')
         df = pd.read_csv(filepath)
-        df.columns = ['date', 'fixing']
+        df.columns = df.columns.str.strip()
+        df = df.rename(columns={df.columns[0]: 'date', df.columns[1]: 'fixing'})
         df['date'] = pd.to_datetime(df['date'], format='%d.%m.%Y')
         df = df.set_index('date').sort_index()
         mask = (df.index >= pd.Timestamp(first_date)) & (df.index <= pd.Timestamp(last_date))
