@@ -35,9 +35,9 @@ c1, c2, c3 = st.columns(3)
 with c1:
     type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
 with c2:
-    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=0)
+    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=1)
 with c3:
-    horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=1)
+    horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=5)
 
 window = st.slider("Количество дней в истории", min_value=252, max_value=2520, value=252, step=252)
 

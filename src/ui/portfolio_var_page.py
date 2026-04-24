@@ -39,9 +39,9 @@ row1_col1, row1_col2, row1_col3 = st.columns(3)
 with row1_col1:
     type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
 with row1_col2:
-    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=0)
+    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=1)
 with row1_col3:
-    horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=1)
+    horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=5)
 
 window = st.slider("Количество дней в истории", min_value=252, max_value=2520, value=252, step=252)
 
@@ -240,8 +240,8 @@ _VAR_HELPS = {
 recommended_var_display = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
 st.metric(_VAR_LABELS[recommended], f"{recommended_var_display:.4f}", help=_VAR_HELPS[recommended])
 st.caption(
-    f"Средняя |ρ̄| = **{avg_abs_corr:.3f}** (ρ̄ = {avg_corr:.3f}) → "
-    f"рекомендован **{_VAR_LABELS[recommended]}**"
+    f"Средняя |ρ̄| = **{avg_abs_corr:.3f}**, "
+    f"используем **{_VAR_LABELS[recommended]}**"
 )
 
 st.divider()

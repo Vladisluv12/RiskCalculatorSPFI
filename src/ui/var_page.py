@@ -42,9 +42,9 @@ if selected_id:
     with row1_col1:
         type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
     with row1_col2:
-        conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=0)
+        conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=1)
     with row1_col3:
-        horizon = st.number_input("Горизонт прогноза", min_value=1, max_value=30, value=1)
+        horizon = st.number_input("Горизонт прогноза", min_value=1, max_value=30, value=5)
 
     window = st.slider(
         "Количество дней в истории",
