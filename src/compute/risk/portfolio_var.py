@@ -9,6 +9,9 @@ from instruments.BaseInstrument import BaseInstrument
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
+from instruments.IRSwap import InterestRateSwap
+from compute.pricers.IRSPricer import IRSPricer
+from compute.pricers.pricer_dispatch import get_pv_series as _get_pv_dispatch
 
 
 def portfolio_historical_es(dataProvider: DataProvider, instruments: list, calc_start: datetime, calc_end: datetime, confidence_level: float = 0.95, window: int = 252, horizon: int = 1) -> float:
@@ -68,15 +71,7 @@ def _deduplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def _get_pv_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:
     """Возвращает сырой ряд PV (без преобразований), последние window точек."""
-    returns = pd.DataFrame()
-    if isinstance(instrument, CurrencyForwardContract):
-        returns = ForwardPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, CurrencySwapContract):
-        returns = CurrencySwapPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    if returns.empty:
-        raise ValueError(f'Не удалось получить историю PV для {instrument.instrument_id}.')
-    target_col = _resolve_target_column(returns)
-    return returns[target_col].tail(min(window, len(returns))).rename(instrument.instrument_id)
+    return _get_pv_dispatch(dataProvider, instrument, calc_start, calc_end, window)
 
 
 def _get_pnl_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:

@@ -8,6 +8,9 @@ from instruments.BaseInstrument import BaseInstrument
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
+from instruments.IRSwap import InterestRateSwap
+from compute.pricers.IRSPricer import IRSPricer
+from compute.pricers.pricer_dispatch import get_pv_series as _get_pv_dispatch
 
 
 def to_pnl(returns):
@@ -35,10 +38,11 @@ def historical(dataProvider: DataProvider, instrument: BaseInstrument, calc_star
     if isinstance(instrument, CurrencyForwardContract):
         fxPricer = ForwardPricer(365)
         returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    else:
-        if isinstance(instrument, CurrencySwapContract):
-            swapPricer = CurrencySwapPricer(365)
-            returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    elif isinstance(instrument, CurrencySwapContract):
+        swapPricer = CurrencySwapPricer(365)
+        returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    elif isinstance(instrument, InterestRateSwap):
+        returns = IRSPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
     if returns.empty:
         raise ValueError('Не удалось получить историю PV для расчета исторического VaR.')
     else:
@@ -62,10 +66,11 @@ def parametric(dataProvider: DataProvider, instrument: BaseInstrument, calc_star
     if isinstance(instrument, CurrencyForwardContract):
         fxPricer = ForwardPricer(365)
         returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    else:
-        if isinstance(instrument, CurrencySwapContract):
-            swapPricer = CurrencySwapPricer(365)
-            returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    elif isinstance(instrument, CurrencySwapContract):
+        swapPricer = CurrencySwapPricer(365)
+        returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
+    elif isinstance(instrument, InterestRateSwap):
+        returns = IRSPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
     if returns.empty:
         raise ValueError('Не удалось получить историю PV для расчета параметрического VaR.')
     else:
@@ -123,15 +128,7 @@ def parametric_es(dataProvider: DataProvider, instrument: BaseInstrument, calc_s
 
 def _get_pv_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:
     """Возвращает сырой ряд PV (без преобразований), последние window точек."""
-    returns = pd.DataFrame()
-    if isinstance(instrument, CurrencyForwardContract):
-        returns = ForwardPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, CurrencySwapContract):
-        returns = CurrencySwapPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    if returns.empty:
-        raise ValueError(f'Не удалось получить историю PV для {instrument.instrument_id}.')
-    target_col = _resolve_target_column(returns)
-    return returns[target_col].tail(min(window, len(returns))).rename(instrument.instrument_id)
+    return _get_pv_dispatch(dataProvider, instrument, calc_start, calc_end, window)
 
 
 def _get_pnl_series(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, window: int) -> pd.Series:
