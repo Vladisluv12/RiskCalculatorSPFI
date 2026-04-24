@@ -45,7 +45,11 @@ def render_parametric_inputs(supported: list) -> tuple:
 
     st.subheader("Средний дневной объём торгов (ADV)")
     st.caption("0, чтобы не учитывать поправку на размер позиции.")
-    unique_pairs = sorted({inst.currency_pair.value for inst in supported})
+    from instruments.IRSwap import InterestRateSwap
+    unique_pairs = sorted({
+        inst.currency.value if isinstance(inst, InterestRateSwap) else inst.currency_pair.value
+        for inst in supported
+    })
     adv_cols = st.columns(max(len(unique_pairs), 1))
     raw_adv: dict = {}
     for i, pair in enumerate(unique_pairs):
