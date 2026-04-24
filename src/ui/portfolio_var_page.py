@@ -225,6 +225,7 @@ n = corr_matrix.shape[0]
 mask = ~np.eye(n, dtype=bool)
 off_diag = corr_matrix.values[mask]
 avg_corr = float(np.mean(off_diag))
+avg_abs_corr = float(np.mean(np.abs(off_diag)))
 
 _VAR_LABELS = {
     "diversified": "Диверсифицированный VaR",
@@ -232,14 +233,14 @@ _VAR_LABELS = {
     "uncorrelated": "VaR (некоррелированные позиции)",
 }
 _VAR_HELPS = {
-    "diversified": "√(VaRᵀ · R · VaR) — учитывает корреляции между инструментами",
-    "undiversified": "Σ VaRᵢ — консервативная оценка, инструменты полностью коррелированы",
-    "uncorrelated": "√(Σ VaRᵢ²) — оптимистичная оценка, инструменты независимы",
+    "diversified": "√(VaRᵀ · R · VaR) - учитывает корреляции между инструментами",
+    "undiversified": "Σ VaRᵢ - инструменты полностью коррелированы",
+    "uncorrelated": "√(Σ VaRᵢ²) - инструменты независимы",
 }
 recommended_var_display = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
 st.metric(_VAR_LABELS[recommended], f"{recommended_var_display:.4f}", help=_VAR_HELPS[recommended])
 st.caption(
-    f"Средняя попарная корреляция ρ̄ = **{avg_corr:.3f}** → "
+    f"Средняя |ρ̄| = **{avg_abs_corr:.3f}** (ρ̄ = {avg_corr:.3f}) → "
     f"рекомендован **{_VAR_LABELS[recommended]}**"
 )
 
