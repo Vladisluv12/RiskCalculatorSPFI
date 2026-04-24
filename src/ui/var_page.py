@@ -10,6 +10,7 @@ from datetime import datetime, time, timedelta
 import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
 from ui.common.components import render_export_download, render_report_toggle
 render_report_sidebar()
@@ -71,8 +72,8 @@ if selected_id:
 
     if selected_instrument is None:
         st.error("Выбранный инструмент не найден в портфеле.")
-    elif not isinstance(selected_instrument, CurrencyForwardContract) and not isinstance(selected_instrument, CurrencySwapContract):
-        st.warning("Расчет VaR сейчас доступен только для валютных форвардов и свопов.")
+    elif not isinstance(selected_instrument, (CurrencyForwardContract, CurrencySwapContract, InterestRateSwap)):
+        st.warning("Расчет VaR недоступен для данного типа инструмента.")
     else:
         try:
             data_provider = st.session_state.get('data_provider')

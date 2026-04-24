@@ -8,6 +8,7 @@ import compute.risk.lvar as lvar
 import compute.risk.portfolio_var as pvar
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
 from ui.lvar_common.lvar_inputs import render_parametric_inputs, render_csv_inputs
 from ui.lvar_common.lvar_results import build_liquidity_params, build_lc_dataframe, render_lvar_results, render_export_section
@@ -22,10 +23,10 @@ st.title("💧 LVaR (Liquidity-adjusted VaR)")
 portfolio = st.session_state.get("portfolio", [])
 supported = [
     inst for inst in portfolio
-    if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract))
+    if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract, InterestRateSwap))
 ]
 if len(supported) < 1:
-    st.warning("Для расчёта LVaR необходим хотя бы 1 инструмент (FX Forward или FX Swap) в портфеле.")
+    st.warning("Для расчёта LVaR необходим хотя бы 1 инструмент (FX Forward, FX Swap или IRS/OIS) в портфеле.")
     st.stop()
 
 # Параметры VaR

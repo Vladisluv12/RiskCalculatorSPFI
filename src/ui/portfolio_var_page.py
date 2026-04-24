@@ -10,6 +10,7 @@ import streamlit as st
 import compute.risk.portfolio_var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
 from ui.common.components import render_export_download, render_report_toggle
 from ui.portfolio_common.ivar_cvar_section import render_ivar_cvar_section
@@ -22,13 +23,13 @@ st.title("📊 VaR портфеля")
 portfolio = st.session_state.get("portfolio", [])
 supported = [
     inst for inst in portfolio
-    if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract))
+    if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract, InterestRateSwap))
 ]
 
 if len(supported) < 2:
     st.warning(
-        "Для расчета VaR портфеля необходимо минимум 2 поддерживаемых инструмента "
-        "(FX Forward или FX Swap) в портфеле."
+        "Для расчета VaR портфеля необходимо минимум 2 инструмента "
+        "(FX Forward, FX Swap или IRS/OIS) в портфеле."
     )
     st.stop()
 
