@@ -109,16 +109,16 @@ def _dict_to_instrument(d: dict) -> BaseInstrument:
     inst_type = d.get("type")
     if inst_type not in _INSTRUMENT_TYPES:
         raise ValueError(f"Unknown instrument type: {inst_type!r}")
+    base_fields = dict(
+        instrument_id=str(d["instrument_id"]),
+        notional=float(d["notional"]),
+        direction=Direction(str(d["direction"])),
+        start_date=_parse_date(d["start_date"]),
+        end_date=_parse_date(d["end_date"]),
+    )
     if inst_type == "IRS":
-        base = dict(
-            instrument_id=str(d["instrument_id"]),
-            notional=float(d["notional"]),
-            direction=Direction(str(d["direction"])),
-            start_date=_parse_date(d["start_date"]),
-            end_date=_parse_date(d["end_date"]),
-        )
         return InterestRateSwap(
-            **base,
+            **base_fields,
             currency=Currency(str(d["irs_currency"])),
             fixed_rate=float(d["irs_fixed_rate"]),
             fixed_day_count=DayCountConvention(str(d["irs_fixed_day_count"])),
@@ -131,11 +131,7 @@ def _dict_to_instrument(d: dict) -> BaseInstrument:
             floating_offset_rule=OffsetRule(str(d["irs_floating_offset_rule"])),
         )
     common = dict(
-        instrument_id=str(d["instrument_id"]),
-        notional=float(d["notional"]),
-        direction=Direction(str(d["direction"])),
-        start_date=_parse_date(d["start_date"]),
-        end_date=_parse_date(d["end_date"]),
+        **base_fields,
         currency_pair=CurrencyPair(str(d["currency_pair"])),
         base_currency=str(d["base_currency"]),
         quote_currency=str(d["quote_currency"]),

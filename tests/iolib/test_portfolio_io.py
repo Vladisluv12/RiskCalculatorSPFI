@@ -2,9 +2,10 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from datetime import datetime
-from instruments.enums import Direction, CurrencyPair
+from instruments.enums import Direction, CurrencyPair, Currency, DayCountConvention, PaymentTiming, OffsetRule, FloatingIndex
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
 from iolib.serializers.json_serializer import JsonSerializer
 from iolib.serializers.yaml_serializer import YamlSerializer
 from iolib.serializers.csv_serializer import CsvSerializer
@@ -90,11 +91,6 @@ def test_import_skips_invalid_rows():
 
 # --- IRS serialization ---
 
-from instruments.IRSwap import InterestRateSwap
-from instruments.enums import (
-    Currency, DayCountConvention, PaymentTiming, OffsetRule, FloatingIndex
-)
-
 
 def _make_irs():
     return InterestRateSwap(
@@ -141,8 +137,6 @@ def test_irs_roundtrip_json():
 
 def test_mixed_portfolio_roundtrip():
     """FXForward + IRS in same portfolio serializes and deserializes correctly."""
-    from instruments.FXForward import CurrencyForwardContract
-    from instruments.enums import CurrencyPair
     fwd = CurrencyForwardContract(
         instrument_id='FWD-001',
         notional=100_000.0,
