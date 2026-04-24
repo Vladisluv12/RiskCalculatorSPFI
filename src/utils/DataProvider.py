@@ -1,10 +1,26 @@
 from datetime import datetime
 from utils.liquidity_io import list_liquidity_files, load_liquidity_csv
+from instruments.enums import FloatingIndex
 
 
 import pandas as pd
 import streamlit as st
 import os
+
+_FIXING_FILENAMES: dict = {
+    FloatingIndex.RUONIA_AVG:      "RUONIA Avg..csv",
+    FloatingIndex.RUONIA_COMP:     "RUONIA Comp..csv",
+    FloatingIndex.ESTR_COMP:       "ESTR_Comp.csv",
+    FloatingIndex.SOFR_COMP:       "SOFR_Comp.csv",
+    FloatingIndex.OIS_FX:          "OIS FX.csv",
+    FloatingIndex.EURIBOR_EUR_1M:  "Euribor_EUR_1m.csv",
+    FloatingIndex.EURIBOR_EUR_3M:  "Euribor_EUR_3m.csv",
+    FloatingIndex.EURIBOR_EUR_6M:  "Euribor_EUR_6m.csv",
+    FloatingIndex.RUSFAR_RUB_3M:   "RUSFAR RUB 3m.csv",
+    FloatingIndex.RUSFAR_RUB_ON:   "RusFar RUB O_N.csv",
+    FloatingIndex.RUSFARCNY_COMP:  "RUSFARCNY_Comp.csv",
+    FloatingIndex.RUB_KEY_RATE:    "RUB KeyRate.csv",
+}
 
 class DataProvider:
     """
@@ -78,4 +94,21 @@ class DataProvider:
         start = first_date
         end = last_date
         mask = (df.index >= start) & (df.index <= end)
+        return df.loc[mask]
+
+    def get_fixing_data(
+        self,
+        index: FloatingIndex,
+        first_date: datetime,
+        last_date: datetime,
+    ) -> pd.DataFrame:
+        filename = _FIXING_FILENAMES[index]
+        filepath = os.path.join(self.filepath, 'fixings', filename)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f'Файл фиксингов для {index.value} не найден.')
+        df = pd.read_csv(filepath)
+        df.columns = ['date', 'fixing']
+        df['date'] = pd.to_datetime(df['date'], format='%d.%m.%Y')
+        df = df.set_index('date').sort_index()
+        mask = (df.index >= pd.Timestamp(first_date)) & (df.index <= pd.Timestamp(last_date))
         return df.loc[mask]
