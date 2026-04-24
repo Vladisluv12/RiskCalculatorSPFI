@@ -5,7 +5,6 @@ from instruments.IRSwap import InterestRateSwap
 from instruments.enums import Direction
 from utils.DataProvider import DataProvider
 from compute.pricers import swap_utils
-from compute.pricers.swap_utils import generate_payment_schedule, year_fraction
 
 
 class IRSPricer:
@@ -35,7 +34,7 @@ class IRSPricer:
         if curve_daily.dropna(how='all').empty:
             return pd.DataFrame(dtype=float)
 
-        payment_dates = generate_payment_schedule(
+        payment_dates = swap_utils.generate_payment_schedule(
             contract.start_date, contract.end_date, contract.fixed_payment_timing
         )
 
@@ -44,7 +43,7 @@ class IRSPricer:
         prev_date = contract.start_date
         for pmt_date in payment_dates:
             pmt_ts = pd.Timestamp(pmt_date)
-            dcf = year_fraction(prev_date, pmt_date, contract.fixed_day_count)
+            dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.fixed_day_count)
             tenor_i = pd.Series(
                 [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
                  for t in full_index],
@@ -55,6 +54,10 @@ class IRSPricer:
             prev_date = pmt_date
 
         # Floating leg (par-float): PV_float = notional * (DF(t, start) - DF(t, end))
+        # Note: floating_spread, floating_index, floating_day_count,
+        # floating_payment_timing are NOT used — par-float ignores actual
+        # floating cashflows and approximates the full floating leg NPV
+        # using only discount factors.
         start_ts = pd.Timestamp(contract.start_date)
         end_ts = pd.Timestamp(contract.end_date)
 
