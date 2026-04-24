@@ -86,3 +86,80 @@ def test_import_skips_invalid_rows():
     instruments, errors = importer.load(raw)
     assert len(errors) == 2   # FXForward missing required fields, UNKNOWN unknown type
     assert len(instruments) == 0
+
+
+# --- IRS serialization ---
+
+from instruments.IRSwap import InterestRateSwap
+from instruments.enums import (
+    Currency, DayCountConvention, PaymentTiming, OffsetRule, FloatingIndex
+)
+
+
+def _make_irs():
+    return InterestRateSwap(
+        instrument_id='IRS-001',
+        notional=1_000_000.0,
+        direction=Direction.BUY,
+        start_date=datetime(2025, 1, 1),
+        end_date=datetime(2026, 1, 1),
+        currency=Currency.RUB,
+        fixed_rate=0.16,
+        fixed_day_count=DayCountConvention.ACT_365,
+        fixed_payment_timing=PaymentTiming.QUARTERLY,
+        fixed_offset_rule=OffsetRule.NONE,
+        floating_index=FloatingIndex.RUONIA_COMP,
+        floating_spread=0.0,
+        floating_day_count=DayCountConvention.ACT_365,
+        floating_payment_timing=PaymentTiming.QUARTERLY,
+        floating_offset_rule=OffsetRule.NONE,
+    )
+
+
+def test_irs_export_produces_bytes():
+    irs = _make_irs()
+    raw = PortfolioExporter(JsonSerializer()).save([irs])
+    assert isinstance(raw, bytes)
+    assert len(raw) > 0
+
+
+def test_irs_roundtrip_json():
+    irs = _make_irs()
+    raw = PortfolioExporter(JsonSerializer()).save([irs])
+    loaded, errors = PortfolioImporter(JsonSerializer()).load(raw)
+    assert errors == []
+    assert len(loaded) == 1
+    result = loaded[0]
+    assert isinstance(result, InterestRateSwap)
+    assert result.instrument_id == 'IRS-001'
+    assert result.currency == Currency.RUB
+    assert abs(result.fixed_rate - 0.16) < 1e-9
+    assert result.floating_index == FloatingIndex.RUONIA_COMP
+    assert result.fixed_payment_timing == PaymentTiming.QUARTERLY
+    assert result.direction == Direction.BUY
+
+
+def test_mixed_portfolio_roundtrip():
+    """FXForward + IRS in same portfolio serializes and deserializes correctly."""
+    from instruments.FXForward import CurrencyForwardContract
+    from instruments.enums import CurrencyPair
+    fwd = CurrencyForwardContract(
+        instrument_id='FWD-001',
+        notional=100_000.0,
+        direction=Direction.BUY,
+        start_date=datetime(2025, 1, 1),
+        end_date=datetime(2025, 6, 1),
+        currency_pair=CurrencyPair.USD_RUB,
+        base_currency='USD',
+        quote_currency='RUB',
+        forward_rate=90.0,
+        spot_rate=None,
+        is_ndf=False,
+    )
+    irs = _make_irs()
+    raw = PortfolioExporter(JsonSerializer()).save([fwd, irs])
+    loaded, errors = PortfolioImporter(JsonSerializer()).load(raw)
+    assert errors == []
+    assert len(loaded) == 2
+    types = {type(inst).__name__ for inst in loaded}
+    assert types == {'CurrencyForwardContract', 'InterestRateSwap'}

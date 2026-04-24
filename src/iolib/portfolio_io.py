@@ -2,12 +2,13 @@ from datetime import datetime
 from typing import Any
 
 from instruments.BaseInstrument import BaseInstrument
-from instruments.enums import Direction, CurrencyPair
+from instruments.enums import Direction, CurrencyPair, Currency, DayCountConvention, PaymentTiming, OffsetRule, FloatingIndex
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
 from iolib.serializers.base import BaseSerializer
 
-_INSTRUMENT_TYPES = {"FXForward", "FXSwap"}
+_INSTRUMENT_TYPES = {"FXForward", "FXSwap", "IRS"}
 
 
 def _parse_bool(val: Any) -> bool:
@@ -31,6 +32,8 @@ def _instrument_to_dict(inst: BaseInstrument) -> dict:
         inst_type = "FXForward"
     elif isinstance(inst, CurrencySwapContract):
         inst_type = "FXSwap"
+    elif isinstance(inst, InterestRateSwap):
+        inst_type = "IRS"
     else:
         inst_type = type(inst).__name__
     # Include all possible fields for both instrument types (None for absent fields).
@@ -54,6 +57,17 @@ def _instrument_to_dict(inst: BaseInstrument) -> dict:
         "fixed_sum": None,
         "swap_points": None,
         "reverse_rate": None,
+        # IRS-specific
+        "irs_currency": None,
+        "irs_fixed_rate": None,
+        "irs_fixed_day_count": None,
+        "irs_fixed_payment_timing": None,
+        "irs_fixed_offset_rule": None,
+        "irs_floating_index": None,
+        "irs_floating_spread": None,
+        "irs_floating_day_count": None,
+        "irs_floating_payment_timing": None,
+        "irs_floating_offset_rule": None,
     }
     if isinstance(inst, CurrencyForwardContract):
         base.update({
@@ -75,6 +89,19 @@ def _instrument_to_dict(inst: BaseInstrument) -> dict:
             "swap_points": inst.swap_points,
             "reverse_rate": inst.reverse_rate,
         })
+    elif isinstance(inst, InterestRateSwap):
+        base.update({
+            "irs_currency": inst.currency.value,
+            "irs_fixed_rate": inst.fixed_rate,
+            "irs_fixed_day_count": inst.fixed_day_count.value,
+            "irs_fixed_payment_timing": inst.fixed_payment_timing.value,
+            "irs_fixed_offset_rule": inst.fixed_offset_rule.value,
+            "irs_floating_index": inst.floating_index.value,
+            "irs_floating_spread": inst.floating_spread,
+            "irs_floating_day_count": inst.floating_day_count.value,
+            "irs_floating_payment_timing": inst.floating_payment_timing.value,
+            "irs_floating_offset_rule": inst.floating_offset_rule.value,
+        })
     return base
 
 
@@ -82,6 +109,27 @@ def _dict_to_instrument(d: dict) -> BaseInstrument:
     inst_type = d.get("type")
     if inst_type not in _INSTRUMENT_TYPES:
         raise ValueError(f"Unknown instrument type: {inst_type!r}")
+    if inst_type == "IRS":
+        base = dict(
+            instrument_id=str(d["instrument_id"]),
+            notional=float(d["notional"]),
+            direction=Direction(str(d["direction"])),
+            start_date=_parse_date(d["start_date"]),
+            end_date=_parse_date(d["end_date"]),
+        )
+        return InterestRateSwap(
+            **base,
+            currency=Currency(str(d["irs_currency"])),
+            fixed_rate=float(d["irs_fixed_rate"]),
+            fixed_day_count=DayCountConvention(str(d["irs_fixed_day_count"])),
+            fixed_payment_timing=PaymentTiming(str(d["irs_fixed_payment_timing"])),
+            fixed_offset_rule=OffsetRule(str(d["irs_fixed_offset_rule"])),
+            floating_index=FloatingIndex(str(d["irs_floating_index"])),
+            floating_spread=float(d["irs_floating_spread"]),
+            floating_day_count=DayCountConvention(str(d["irs_floating_day_count"])),
+            floating_payment_timing=PaymentTiming(str(d["irs_floating_payment_timing"])),
+            floating_offset_rule=OffsetRule(str(d["irs_floating_offset_rule"])),
+        )
     common = dict(
         instrument_id=str(d["instrument_id"]),
         notional=float(d["notional"]),
