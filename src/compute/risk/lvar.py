@@ -5,6 +5,7 @@ from datetime import datetime
 from compute.risk.var import _get_pv_series
 from utils.DataProvider import DataProvider
 from compute.modelling.liquidity import LiquidityParams, estimate_spread_series, compute_lc
+from instruments.IRSwap import InterestRateSwap
 
 
 def portfolio_lvar(
@@ -37,6 +38,17 @@ def portfolio_lvar(
     pv_series_list: list = []  # для расчёта абсолютного портфельного VaR
 
     for inst in instruments:
+        # IRS: FX-based liquidity cost model не применим — LC = 0, только VaR
+        if isinstance(inst, InterestRateSwap):
+            try:
+                pv_series = _get_pv_series(dataProvider, inst, calc_start, calc_end, window)
+                mid_pv = float(pv_series.iloc[-1])
+                pv_series_list.append(pv_series)
+            except Exception:
+                mid_pv = 0.0
+            instrument_lc[inst.instrument_id] = {'normal': 0.0, 'stressed': 0.0, 's_pct': 0.0, 'abs_pv': abs(mid_pv)}
+            continue
+
         pair_ticker = inst.currency_pair.value.replace('/', '')  # 'USDRUB'
         pair_label = inst.currency_pair.value                    # 'USD/RUB'
 
