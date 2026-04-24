@@ -221,29 +221,37 @@ if r["type_of_var"] == "Исторический":
 else:
     st.latex(r"VaR_P = Z_c \times \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2w_1w_2\sigma_1\sigma_2\rho_{1,2}}")
 
-hints = {
-    "diversified": "ρ ∊ [0.3;0.7].",
-    "undiversified": "ρ > 0.7",
-    "uncorrelated": "ρ < 0.3.",
-}
-var_types = ["diversified", "undiversified", "uncorrelated"]
-var_descs = ["Диверсифицированный VaR", "Недиверсифицированный VaR", "VaR (некоррел. позиции)"]
-var_vals = [diversified_var, undiversified_var, uncorrelated_var]
-rec_ind = var_types.index(recommended)
+n = corr_matrix.shape[0]
+mask = ~np.eye(n, dtype=bool)
+off_diag = corr_matrix.values[mask]
+avg_corr = float(np.mean(off_diag))
 
+_VAR_LABELS = {
+    "diversified": "Диверсифицированный VaR",
+    "undiversified": "Недиверсифицированный VaR",
+    "uncorrelated": "VaR (некоррелированные позиции)",
+}
+_VAR_HELPS = {
+    "diversified": "√(VaRᵀ · R · VaR) — учитывает корреляции между инструментами",
+    "undiversified": "Σ VaRᵢ — консервативная оценка, инструменты полностью коррелированы",
+    "uncorrelated": "√(Σ VaRᵢ²) — оптимистичная оценка, инструменты независимы",
+}
+recommended_var_display = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
+st.metric(_VAR_LABELS[recommended], f"{recommended_var_display:.4f}", help=_VAR_HELPS[recommended])
+st.caption(
+    f"Средняя попарная корреляция ρ̄ = **{avg_corr:.3f}** → "
+    f"рекомендован **{_VAR_LABELS[recommended]}**"
+)
+
+st.divider()
+
+# ES портфеля
 st.subheader("ES портфеля")
 if r["type_of_var"] == "Исторический":
     st.latex(r"ES_P = \left|\,\mathbb{E}\left[PnL_P \mid PnL_P \leq Q_{\alpha}\right]\right|")
 else:
     st.latex(r"ES_P = \left|-\mu_P + \sigma_P\,\frac{\varphi(z_{\alpha})}{\alpha}\right|\cdot\sqrt{horizon}")
-st.divider()
-
-m1, m2 = st.columns(2)
-with m1:
-    st.metric(var_descs[rec_ind], f"{var_vals[rec_ind]:.4f}")
-    st.success(hints[var_types[rec_ind]])
-with m2:
-    st.metric("Expected Shortfall портфеля", f"{portfolio_es:.4f}")
+st.metric("Expected Shortfall портфеля", f"{portfolio_es:.4f}")
 
 st.caption(
     f"Метод: **{r['type_of_var']}** | "
@@ -314,7 +322,7 @@ pvar_results = {
     "individual_vars": pd.DataFrame.from_dict(individual_vars, orient="index", columns=["VaR"]),
     "corr_matrix": corr_matrix,
     "summary": {
-        f"portfolio_{recommended}_var": var_vals[rec_ind],
+        f"portfolio_{recommended}_var": recommended_var_value,
         "portfolio_es": portfolio_es,
     },
 }
