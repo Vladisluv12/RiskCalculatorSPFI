@@ -1,6 +1,7 @@
 from typing import Optional
 from dataclasses import dataclass
-from instruments.BaseInstrument import BaseInstrument, CurrencyPair
+from instruments.BaseInstrument import BaseInstrument
+from instruments.enums import CurrencyPair
 
 @dataclass
 class CurrencyForwardContract(BaseInstrument):

@@ -4,6 +4,7 @@ from datetime import date
 from utils.DataProvider import DataProvider
 from iolib.report_builder import ReportBuilder
 from utils.bootstrap_test_data import bootstrap_test_data
+from utils.generate_liquidity import ensure_liquidity_file
 
 # Инициализация состояния (обязательно до навигации)
 if 'portfolio' not in st.session_state:
@@ -17,6 +18,8 @@ if 'data_provider' not in st.session_state:
 
 # Для отключения тестовой инициализации закомментируйте следующую строку.
 bootstrap_test_data(st.session_state)
+
+ensure_liquidity_file(st.session_state.data_dir)
 
 if 'report_builder' not in st.session_state:
     st.session_state.report_builder = ReportBuilder()

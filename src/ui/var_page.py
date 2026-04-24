@@ -10,8 +10,8 @@ from datetime import datetime, time, timedelta
 import compute.risk.var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
-from ui.sidebar import render_report_sidebar
-from ui.components import render_export_download, render_report_toggle
+from ui.common.sidebar import render_report_sidebar
+from ui.common.components import render_export_download, render_report_toggle
 render_report_sidebar()
 
 st.title("📉 Анализ рисков (VaR)")

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from compute.risk.var import compute_cvar
+from compute.risk.civar import compute_cvar
 
 
 def _make_pnl(n=300, seed=42):
@@ -62,7 +62,7 @@ def test_compute_cvar_sum_approximately_equals_portfolio_var():
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-from compute.risk.var import portfolio_ivar
+from compute.risk.civar import portfolio_ivar
 
 
 def _mock_result(div=10.0, undiv=12.0, uncorr=8.0, ids=('A', 'B')):
@@ -97,7 +97,7 @@ def test_portfolio_ivar_two_instruments():
     start = datetime(2024, 1, 1)
     end = datetime(2024, 12, 31)
 
-    with patch('compute.risk.var.portfolio_historical', side_effect=side_effects) as mock_hist:
+    with patch('compute.risk.civar.portfolio_historical', side_effect=side_effects) as mock_hist:
         result = portfolio_ivar(
             dataProvider=None,
             instruments=instruments,
@@ -124,7 +124,7 @@ def test_portfolio_ivar_single_instrument_gives_full_var():
     start = datetime(2024, 1, 1)
     end = datetime(2024, 12, 31)
 
-    with patch('compute.risk.var.portfolio_historical') as mock_hist:
+    with patch('compute.risk.civar.portfolio_historical') as mock_hist:
         result = portfolio_ivar(
             dataProvider=None,
             instruments=[inst_a],

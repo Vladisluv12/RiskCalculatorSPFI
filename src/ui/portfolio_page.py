@@ -1,8 +1,8 @@
 import streamlit as st
 from datetime import date
 
-from ui.sidebar import render_add_instrument_form, render_report_sidebar
-from ui.table_view import render_portfolio_table
+from ui.common.sidebar import render_add_instrument_form, render_report_sidebar
+from ui.portfolio_common.table_view import render_portfolio_table
 from utils.DataProvider import DataProvider
 from iolib.serializers import SERIALIZERS, FORMAT_LABELS, EXT_TO_SERIALIZER
 from iolib.portfolio_io import PortfolioImporter, PortfolioExporter

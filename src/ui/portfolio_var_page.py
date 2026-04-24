@@ -10,9 +10,9 @@ import streamlit as st
 import compute.risk.portfolio_var as var
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
-from ui.sidebar import render_report_sidebar
-from ui.components import render_export_download, render_report_toggle
-from ui.ivar_cvar_section import render_ivar_cvar_section
+from ui.common.sidebar import render_report_sidebar
+from ui.common.components import render_export_download, render_report_toggle
+from ui.portfolio_common.ivar_cvar_section import render_ivar_cvar_section
 
 
 render_report_sidebar()

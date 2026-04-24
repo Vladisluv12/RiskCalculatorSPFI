@@ -1,17 +1,7 @@
 from datetime import datetime
 from dataclasses import dataclass
-from enum import Enum
+from instruments.enums import Direction
 
-class Direction(Enum):
-    BUY = 'Buy'
-    SELL = 'Sell'
-
-class CurrencyPair(Enum):
-    """Валютные пары из Приложения 2"""
-    USD_RUB = 'USD/RUB'
-    EUR_RUB = 'EUR/RUB'
-    EUR_USD = 'EUR/USD'
-    CNY_RUB = 'CNY/RUB'
 
 @dataclass
 class BaseInstrument:

@@ -4,7 +4,7 @@ from scipy.stats import norm
 from datetime import datetime
 from compute.risk.var import _get_pv_series
 from utils.DataProvider import DataProvider
-from compute.modelling.liquidity import estimate_spread_series, compute_lc
+from compute.modelling.liquidity import LiquidityParams, estimate_spread_series, compute_lc
 
 
 def portfolio_lvar(
@@ -12,7 +12,7 @@ def portfolio_lvar(
     dataProvider: DataProvider,
     calc_start: datetime,
     calc_end: datetime,
-    params,                        # LiquidityParams
+    params : LiquidityParams,
     T: int = 1,
     confidence_level: float = 0.95,
     window: int = 252,
@@ -72,6 +72,7 @@ def portfolio_lvar(
             notional=float(inst.notional),
             currency_pair=pair_label,
             params=params,
+            instrument_id=inst.instrument_id,
         )
 
         lc = compute_lc(mid_pv=mid_pv, spread_series=spread_series, z_alpha=z_alpha)
@@ -83,8 +84,7 @@ def portfolio_lvar(
     lc_total_stressed = sum(v['stressed'] for v in instrument_lc.values())
     total_abs_pv = sum(v.get('abs_pv', 0.0) for v in instrument_lc.values())
 
-    # Абсолютный VaR портфеля — через diff() суммарного PV (а не pct_change).
-    # pct_change от MTM-переоценки форварда нестабилен когда PV близко к нулю.
+    # Абсолютный VaR портфеля — через diff() суммарного PV (а не pct_change)
     if pv_series_list:
         portfolio_pv = pd.concat(pv_series_list, axis=1).dropna().sum(axis=1)
         portfolio_diff = portfolio_pv.diff().dropna().tail(window)

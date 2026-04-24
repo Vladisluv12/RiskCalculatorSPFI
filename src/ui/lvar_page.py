@@ -3,19 +3,20 @@ from dataclasses import replace
 from datetime import datetime, time, timedelta
 
 import numpy as np
-import pandas as pd
 import streamlit as st
-import compute.risk.lvar as var
+import compute.risk.lvar as lvar
 import compute.risk.portfolio_var as pvar
-from compute.modelling.liquidity import LiquidityParams
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
-from ui.sidebar import render_report_sidebar
-from ui.components import render_export_download, render_report_toggle
+from ui.common.sidebar import render_report_sidebar
+from ui.lvar_common.lvar_inputs import render_parametric_inputs, render_csv_inputs
+from ui.lvar_common.lvar_results import build_liquidity_params, build_lc_dataframe, render_lvar_results, render_export_section
+from ui.lvar_common.lvar_spreads import liquidity_spreads_key
 
+_PARAMETRIC = "Параметрическая модель"
+_CSV = "CSV-файл со спредами"
 
 render_report_sidebar()
-
 st.title("💧 LVaR (Liquidity-adjusted VaR)")
 
 portfolio = st.session_state.get("portfolio", [])
@@ -23,21 +24,18 @@ supported = [
     inst for inst in portfolio
     if isinstance(inst, (CurrencyForwardContract, CurrencySwapContract))
 ]
-
 if len(supported) < 1:
     st.warning("Для расчёта LVaR необходим хотя бы 1 инструмент (FX Forward или FX Swap) в портфеле.")
     st.stop()
 
-# ──────────────────────────────────────────────
 # Параметры VaR
-# ──────────────────────────────────────────────
 st.subheader("Параметры VaR")
-row1_col1, row1_col2, row1_col3 = st.columns(3)
-with row1_col1:
+c1, c2, c3 = st.columns(3)
+with c1:
     type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
-with row1_col2:
+with c2:
     conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=0)
-with row1_col3:
+with c3:
     horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=1)
 
 window = st.slider("Количество дней в истории", min_value=252, max_value=2520, value=252, step=252)
@@ -46,129 +44,51 @@ earliest_start = min(inst.start_date.date() for inst in supported)
 calc_end_date = earliest_start - timedelta(days=1)
 calc_start_date = calc_end_date - timedelta(days=int(window))
 
-r2c1, r2c2 = st.columns(2)
-with r2c1:
+dc1, dc2 = st.columns(2)
+with dc1:
     st.date_input("Дата начала расчета", value=calc_start_date, disabled=True)
-with r2c2:
+with dc2:
     st.date_input("Дата конца расчета", value=calc_end_date, disabled=True)
 
 st.divider()
 
-# ──────────────────────────────────────────────
-# Описание модели
-# ──────────────────────────────────────────────
+# Источник данных по ликвидности
+liquidity_source = st.radio(
+    "Источник данных по ликвидности",
+    [_PARAMETRIC, _CSV],
+    horizontal=True,
+    key="lvar_liquidity_source",
+)
+
 with st.expander("Описание используемой модели ликвидности"):
     st.markdown(
-        """
-
+        r"""
 Cпред bid/ask моделируется как случайная величина, зависящая от волатильности курса.
 Liquidity cost отражает стоимость закрытия позиции через рынок.
 
 ---
 
-**EWMA-волатильность**:
-$$\\sigma^2(t) = \\lambda \\cdot \\sigma^2(t-1) + (1-\\lambda) \\cdot r^2(t)$$
+**EWMA-волатильность**: $\sigma^2(t) = \lambda \sigma^2(t-1) + (1-\lambda) r^2(t)$
 
-**Оценка спреда**:
-$$s\\%(t) = \\max\\bigl(k \\cdot \\sigma_{\\text{ewma}}(t) \\cdot \\sqrt{\\text{tenor}},\\; s_{\\text{floor}}\\bigr)$$
+**Спред**: $s\%(t) = \max(k \cdot \sigma_\text{ewma}(t) \cdot \sqrt{\text{tenor}},\; s_\text{floor})$
 
-С поправкой на направление и размер позиции:
-$$s\\%_{\\text{adj}}(t) = s\\%(t) \\times d_{\\text{adj}} \\times q_{\\text{adj}}$$
+**Liquidity cost**: $LC = \tfrac{1}{2}|PV| \cdot s\%$, $\quad LC_\text{stressed} = \tfrac{1}{2}|PV|(s\% + z_\alpha \sigma_{s\%})$
 
-где $d_{\\text{adj}} = 1 + \\alpha$ (BUY) или $1 - \\alpha$ (SELL),
-$\\;q_{\\text{adj}} = 1 + 0.5 \\times \\dfrac{N}{ADV}$ (если ADV задан).
-
-**Liquidity cost**:
-$$LC_{\\text{normal}} = \\tfrac{1}{2}\\,|PV|\\cdot s\\%_{\\text{last}}$$
-
-
-$$LC_{\\text{stressed}} = \\tfrac{1}{2}\\,|PV|\\cdot\\bigl(s\\%_{\\text{last}} + z_\\alpha \\cdot \\sigma_{s\\%}\\bigr)$$
-
-**LVaR с T-дневной равномерной ликвидацией**:
-$$LVaR_T = \\frac{VaR + LC}{\\sqrt{\\dfrac{(1+T)(1+2T)}{6T}}}$$
+**LVaR**: $LVaR_T = \dfrac{VaR + LC}{\sqrt{(1+T)(1+2T)/6T}}$
         """
     )
 
-# ──────────────────────────────────────────────
 # Параметры ликвидности
-# ──────────────────────────────────────────────
-st.subheader("Параметры ликвидности")
-lc1, lc2, lc3 = st.columns(3)
-with lc1:
-    k = st.number_input(
-        "k - масштаб спреда",
-        value=3.0, min_value=0.1, step=0.1,
-        help=(
-            "Калибровочный коэффициент в формуле спреда:\n"
-            "s%(t) = max(k × σ_ewma(t) × √tenor, s_floor).\n"
-            "Чем выше k - тем больше спред при той же волатильности. "
-        ),
-    )
-    floor_spread = st.number_input(
-        "s_floor - минимальный спред",
-        value=0.001, min_value=0.0001, step=0.0001, format="%.4f",
-        help=(
-            "Нижняя граница спреда (пол): даже при нулевой волатильности\n"
-            "спред не опустится ниже этого значения.\n"
-            "10 bps = 0.001, 50 bps = 0.005."
-        ),
-    )
-with lc2:
-    alpha = st.number_input(
-        "α - асимметрия BUY/SELL",
-        value=0.10, min_value=0.0, max_value=0.5, step=0.01,
-        help=(
-            "Поправка на сторону сделки:\n"
-            "BUY - спред × (1 + α)  (платим ask-side),\n"
-            "SELL - спред × (1 − α)  (получаем bid-side).\n"
-            "При α = 0 асимметрия не учитывается."
-        ),
-    )
-    lambda_ = st.number_input(
-        "λ - коэффициент затухания EWMA",
-        value=0.94, min_value=0.50, max_value=0.999, step=0.01,
-        help=(
-            "Параметр экспоненциального взвешивания волатильности:\n"
-            "σ²(t) = λ·σ²(t−1) + (1−λ)·r²(t).\n"
-            "Стандарт RiskMetrics для дневных данных - 0.94."
-        ),
-    )
-with lc3:
-    T = st.number_input(
-        "T - дней на ликвидацию",
-        value=1, min_value=1, max_value=30,
-        help=(
-            "Число дней равномерной ликвидации позиции.\n"
-            "Масштабирующий T-фактор:\n"
-            "√((1+T)(1+2T) / (6T))."
-        ),
-    )
-
-st.subheader("Средний дневной объём торгов (ADV)")
-st.caption("0, чтобы не учитывать поправку на размер позиции.")
-unique_pairs = sorted({inst.currency_pair.value for inst in supported})
-adv_cols = st.columns(max(len(unique_pairs), 1))
-raw_adv: dict = {}
-for i, pair in enumerate(unique_pairs):
-    with adv_cols[i]:
-        raw_adv[pair] = st.number_input(
-            pair, min_value=0.0, value=0.0, step=1_000_000.0, format="%.0f",
-        )
-avg_daily_volume = {k_: v for k_, v in raw_adv.items() if v > 0}
+if liquidity_source == _PARAMETRIC:
+    k, floor_spread, alpha, lambda_, T, avg_daily_volume = render_parametric_inputs(supported)
+else:
+    k, floor_spread, alpha, lambda_, avg_daily_volume = 3.0, 0.001, 0.10, 0.94, {}
+    T = render_csv_inputs(supported)
 
 st.divider()
 
-# ──────────────────────────────────────────────
-# Расчёт
-# ──────────────────────────────────────────────
+# Подготовка инструментов
 data_provider = st.session_state.get("data_provider")
-
-_lvar_params_key = (
-    type_of_var, conf_level, int(horizon), window,
-    float(k), float(floor_spread), float(alpha), float(lambda_), int(T),
-    tuple(sorted(avg_daily_volume.items())),
-    tuple(inst.instrument_id for inst in supported),
-)
 if data_provider is None:
     st.error("Источник данных не инициализирован. Перейдите на страницу портфеля и нажмите «Применить».")
     st.stop()
@@ -176,24 +96,26 @@ if data_provider is None:
 calc_start = datetime.combine(calc_start_date, time.min)
 calc_end = datetime.combine(calc_end_date, time.max)
 horizon_td = timedelta(days=max(1, int(horizon)))
-var_instruments = [
-    replace(inst, start_date=calc_start, end_date=calc_end + horizon_td)
-    for inst in supported
-]
-# Для LVaR сохраняем оригинальный end_date инструмента (нужен для расчёта тенора спреда),
-# но заменяем start_date на calc_start, чтобы приценщик генерировал PV с исторического начала.
-lvar_instruments = [
-    replace(inst, start_date=calc_start)
-    for inst in supported
-]
 
-_lvar_stale = (
-    "lvar_results" in st.session_state
-    and st.session_state["lvar_results"].get("_params_key") != _lvar_params_key
+var_instruments = [replace(inst, start_date=calc_start, end_date=calc_end + horizon_td) for inst in supported]
+lvar_instruments = [replace(inst, start_date=calc_start) for inst in supported]
+
+_params_key = (
+    type_of_var, conf_level, int(horizon), window,
+    liquidity_source,
+    float(k), float(floor_spread), float(alpha), float(lambda_), int(T),
+    tuple(sorted(avg_daily_volume.items())),
+    liquidity_spreads_key(liquidity_source, _CSV),
+    tuple(inst.instrument_id for inst in supported),
 )
-if _lvar_stale:
+
+if (
+    "lvar_results" in st.session_state
+    and st.session_state["lvar_results"].get("_params_key") != _params_key
+):
     st.warning("Параметры изменились — результаты устарели. Нажмите «Рассчитать LVaR» для обновления.")
 
+# Расчёт
 if st.button("Рассчитать LVaR"):
     try:
         with st.spinner("Расчёт VaR портфеля..."):
@@ -209,38 +131,21 @@ if st.button("Рассчитать LVaR"):
                 )
 
         corr_matrix = var_result["corr_matrix"]
-        diversified_var = var_result["diversified_var"]
-        undiversified_var = var_result["undiversified_var"]
-        uncorrelated_var = var_result["uncorrelated_var"]
-
         n = corr_matrix.shape[0]
-        mask = ~np.eye(n, dtype=bool)
-        avg_abs_corr_raw = np.mean(np.abs(corr_matrix.values[mask]))
-        avg_abs_corr = 0.0 if np.isnan(avg_abs_corr_raw) else float(avg_abs_corr_raw)
+        avg_abs_corr = float(np.nan_to_num(np.mean(np.abs(corr_matrix.values[~np.eye(n, dtype=bool)]))))
+        recommended = (
+            "undiversified" if avg_abs_corr > 0.7
+            else "uncorrelated" if avg_abs_corr < 0.3
+            else "diversified"
+        )
 
-        if avg_abs_corr > 0.7:
-            recommended = "undiversified"
-        elif avg_abs_corr < 0.3:
-            recommended = "uncorrelated"
-        else:
-            recommended = "diversified"
-
-        var_portfolio = {
-            "diversified": diversified_var,
-            "undiversified": undiversified_var,
-            "uncorrelated": uncorrelated_var,
-        }[recommended]
-
-        params = LiquidityParams(
-            k=float(k),
-            floor_spread=float(floor_spread),
-            alpha=float(alpha),
-            lambda_=float(lambda_),
-            avg_daily_volume=avg_daily_volume,
+        params = build_liquidity_params(
+            liquidity_source, _CSV, lvar_instruments, calc_end,
+            k, floor_spread, alpha, lambda_, avg_daily_volume,
         )
 
         with st.spinner("Расчёт LVaR..."):
-            lvar_result = var.portfolio_lvar(
+            lvar_result = lvar.portfolio_lvar(
                 instruments=lvar_instruments,
                 dataProvider=data_provider,
                 calc_start=calc_start,
@@ -251,23 +156,9 @@ if st.button("Рассчитать LVaR"):
                 window=window,
             )
 
-        rows = []
-        instrument_lc = lvar_result["instrument_lc"]
-        for inst in supported:
-            lc = instrument_lc.get(inst.instrument_id, {'normal': 0.0, 'stressed': 0.0, 's_pct': 0.0})
-            rows.append({
-                "Инструмент": inst.instrument_id,
-                "Направление": inst.direction.value,
-                "Номинал": inst.notional,
-                "s% adj": lc.get('s_pct', 0.0),
-                "LC (normal)": lc['normal'],
-                "LC (stressed)": lc['stressed'],
-            })
-        lc_df = pd.DataFrame(rows).set_index("Инструмент")
-
         st.session_state["lvar_results"] = {
-            "_params_key": _lvar_params_key,
-            "instrument_lc": lc_df,
+            "_params_key": _params_key,
+            "instrument_lc": build_lc_dataframe(supported, lvar_result["instrument_lc"]),
             "lvar_normal": lvar_result["lvar_normal"],
             "lvar_stressed": lvar_result["lvar_stressed"],
             "var_portfolio_abs": lvar_result["var_portfolio_abs"],
@@ -276,7 +167,7 @@ if st.button("Рассчитать LVaR"):
             "t_factor": lvar_result["t_factor"],
             "total_abs_pv": lvar_result["total_abs_pv"],
             "recommended": recommended,
-            "var_portfolio_rel": var_portfolio,
+            "var_portfolio_rel": var_result[f"{recommended}_var"],
             "type_of_var": type_of_var,
             "conf_level": conf_level,
             "horizon": horizon,
@@ -289,63 +180,8 @@ if st.button("Рассчитать LVaR"):
         with st.expander("Детали ошибки"):
             st.code(traceback.format_exc())
 
-# ── Результаты ───────────────────────────────────────────────────────────────
+# Результаты
 if "lvar_results" in st.session_state:
-    res = st.session_state["lvar_results"]
-    lc_df = res["instrument_lc"]
-
-    st.subheader("Формулы")
-    st.latex(r"LC^{normal} = \frac{1}{2}\,|PV|\,\cdot\,s\%")
-    st.latex(r"LC^{stressed} = \frac{1}{2}\,|PV|\,\cdot\,(s\% + z_\alpha \cdot \sigma_{spread})")
-    st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\frac{(1+T)(1+2T)}{6T}}}")
-
-    st.subheader("LC по инструментам")
-    st.dataframe(
-        lc_df.style.format({
-            "Номинал": "{:,.0f}",
-            "s% adj": "{:.4%}",
-            "LC (normal)": "{:.4f}",
-            "LC (stressed)": "{:.4f}",
-        }),
-        width="stretch",
-    )
-
-    st.subheader("LVaR портфеля (в абсолютных значениях)")
-    mc1, mc2, mc3 = st.columns(3)
-    mc1.metric(
-        f"VaR портфеля ({res['recommended']})",
-        f"{res['var_portfolio_abs']:,.2f}",
-        help=f"Абсолютный VaR. Относительный VaR: {res['var_portfolio_rel']:.4f}",
-    )
-    mc2.metric("LC_total (normal)", f"{res['lc_total_normal']:,.2f}")
-    mc3.metric("LC_total (stressed)", f"{res['lc_total_stressed']:,.2f}")
-
-    ml1, ml2, ml3 = st.columns(3)
-    ml1.metric("LVaR (normal)", f"{res['lvar_normal']:,.2f}")
-    ml2.metric("LVaR (stressed)", f"{res['lvar_stressed']:,.2f}")
-    ml3.metric(f"T-фактор (T={res['T']})", f"{res['t_factor']:.4f}")
-
-    st.caption(
-        f"Метод VaR: **{res['type_of_var']}** | "
-        f"Уровень: **{res['conf_level']*100:.0f}%** | "
-        f"Горизонт: **{res['horizon']} дн.** | "
-        f"Окно: **{res['window']} дн.** | "
-        f"Выбран VaR: **{res['recommended']}** | "
-        f"|PV| портфеля: **{res['total_abs_pv']:,.0f}**"
-    )
-
+    render_lvar_results(st.session_state["lvar_results"])
     st.divider()
-
-    # ── Экспорт результатов ───────────────────────────────────────────────────
-    lvar_export_data = {
-        "instrument_lc": lc_df,
-        "lvar_normal": res["lvar_normal"],
-        "lvar_stressed": res["lvar_stressed"],
-        "var_portfolio_abs": res["var_portfolio_abs"],
-        "lc_total_normal": res["lc_total_normal"],
-        "lc_total_stressed": res["lc_total_stressed"],
-    }
-    render_export_download(lvar_export_data, "lvar", "lvar_res_fmt")
-
-    # ── Добавить в отчёт ─────────────────────────────────────────────────────
-    render_report_toggle("lvar_page", "LVaR Portfolio", lvar_export_data, "lvar_report_btn")
+    render_export_section(st.session_state["lvar_results"])

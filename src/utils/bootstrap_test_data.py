@@ -1,10 +1,5 @@
-# Decompiled with PyLingual (https://pylingual.io)
-# Internal filename: 'C:\\Users\\vladc\\Desktop\\projects\\course_work_risk_calc\\src\\utils\\bootstrap_test_data.py'
-# Bytecode version: 3.10.b1 (3439)
-# Source timestamp: 2026-04-03 08:22:38 UTC (1775204558)
-
 from datetime import date, datetime, timedelta
-from instruments.BaseInstrument import CurrencyPair, Direction
+from instruments.enums import CurrencyPair, Direction
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider

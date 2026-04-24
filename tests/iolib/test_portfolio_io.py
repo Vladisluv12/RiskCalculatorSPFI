@@ -2,7 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from datetime import datetime
-from instruments.BaseInstrument import Direction, CurrencyPair
+from instruments.enums import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from iolib.serializers.json_serializer import JsonSerializer

@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any
 
-from instruments.BaseInstrument import BaseInstrument, Direction, CurrencyPair
+from instruments.BaseInstrument import BaseInstrument
+from instruments.enums import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from iolib.serializers.base import BaseSerializer

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from instruments.BaseInstrument import Direction
+from instruments.enums import Direction
 from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
 from compute.modelling.RiskFreeRate import get_risk_free_rate

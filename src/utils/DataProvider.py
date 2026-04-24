@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 from datetime import datetime
+from utils.liquidity_io import list_liquidity_files, load_liquidity_csv
+
 
 import pandas as pd
 import streamlit as st
@@ -54,6 +55,12 @@ class DataProvider:
         end = last_date
         mask = (df.index >= start) & (df.index <= end)
         return df.loc[mask]
+
+    def list_liquidity_files(self) -> list[str]:
+        return list_liquidity_files(self.filepath)
+
+    def load_liquidity_data(self, filepath) -> pd.DataFrame:
+        return load_liquidity_csv(filepath)
 
     def get_curve_data(self, currency_name: str, first_date: datetime, last_date: datetime) -> pd.DataFrame:
         """

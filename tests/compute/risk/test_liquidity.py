@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from compute.modelling.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc
-from instruments.BaseInstrument import Direction
+from instruments.enums import Direction
 
 
 def test_ewma_vol_positive():
@@ -97,7 +97,7 @@ from datetime import datetime
 
 from compute.risk.lvar import portfolio_lvar
 from compute.modelling.liquidity import LiquidityParams
-from instruments.BaseInstrument import Direction, CurrencyPair
+from instruments.enums import Direction, CurrencyPair
 from instruments.FXForward import CurrencyForwardContract
 
 
@@ -128,7 +128,7 @@ def test_portfolio_lvar_t1_factor_is_one():
 
     params = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.10, lambda_=0.94)
 
-    with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
+    with patch('compute.risk.lvar._get_pv_series', return_value=mock_pv):
         result = portfolio_lvar(
             instruments=[_make_forward()],
             dataProvider=mock_dp,
@@ -159,7 +159,7 @@ def test_portfolio_lvar_t5_reduces_lvar():
     mock_dp.get_currency_data.return_value = mock_curs
     params = LiquidityParams(k=3.0, floor_spread=0.001, alpha=0.10, lambda_=0.94)
 
-    with patch('compute.risk.var._get_pv_series', return_value=mock_pv):
+    with patch('compute.risk.lvar._get_pv_series', return_value=mock_pv):
         r1 = portfolio_lvar(
             instruments=[_make_forward()],
             dataProvider=mock_dp, calc_start=datetime(2023, 1, 1),

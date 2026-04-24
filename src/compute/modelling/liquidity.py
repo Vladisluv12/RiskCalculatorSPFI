@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 
-from instruments.BaseInstrument import Direction
+from instruments.enums import Direction
 
 
 @dataclass
@@ -12,6 +12,7 @@ class LiquidityParams:
     alpha: float = 0.10                   # асимметрия BUY/SELL
     lambda_: float = 0.94                 # EWMA decay
     avg_daily_volume: dict = field(default_factory=dict)  # {currency_pair: float}
+    observed_spreads: dict = field(default_factory=dict)  # {currency_pair: spread_pct}
 
 
 def estimate_ewma_vol(fx_returns: pd.Series, lambda_: float = 0.94) -> pd.Series:
@@ -31,6 +32,7 @@ def estimate_spread_series(
     notional: float,
     currency_pair: str,
     params: LiquidityParams,
+    instrument_id: str = "",
 ) -> pd.Series:
     """
     Эмулированная серия s%_adj(t) за исторический период.
@@ -40,6 +42,12 @@ def estimate_spread_series(
     size_adj   = 1 + 0.5 × (notional / ADV)  если ADV задан, иначе 1.0
     s%_adj(t)  = s%(t) × dir_adj × size_adj
     """
+    if instrument_id in params.observed_spreads:
+        val = params.observed_spreads[instrument_id]
+        if isinstance(val, pd.Series):
+            combined = val.reindex(val.index.union(fx_returns.index)).sort_index().ffill().bfill()
+            return combined.reindex(fx_returns.index).fillna(params.floor_spread)
+        return pd.Series(float(val), index=fx_returns.index)
     sigma_ewma = estimate_ewma_vol(fx_returns, params.lambda_)
     base_spread = np.maximum(
         params.k * sigma_ewma * np.sqrt(max(tenor_years, 1 / 365)),
