@@ -122,7 +122,7 @@ def render_irs_form():
     currency_str = st.selectbox(
         'Валюта свопа', [c.value for c in Currency], key='irs_currency'
     )
-    available_indices = _INDEX_BY_CURRENCY.get(currency_str, list(FloatingIndex))
+    available_indices = _INDEX_BY_CURRENCY.get(currency_str, [])
     floating_index_val = st.selectbox(
         'Плавающий индекс',
         options=[idx.value for idx in available_indices],

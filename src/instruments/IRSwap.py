@@ -9,7 +9,7 @@ class InterestRateSwap(BaseInstrument):
     currency: Currency
     
     # Фиксированная нога
-    fixed_rate: float # в процентах
+    fixed_rate: float  # в долях единицы (0.16 = 16%)
     fixed_day_count: DayCountConvention
     fixed_payment_timing: PaymentTiming
     fixed_offset_rule: OffsetRule
