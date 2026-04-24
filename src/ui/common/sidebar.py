@@ -1,8 +1,26 @@
 import streamlit as st
 from datetime import date, datetime
-from instruments.enums import Direction, CurrencyPair
+from instruments.enums import Direction, CurrencyPair, Currency, DayCountConvention, PaymentTiming, OffsetRule, FloatingIndex
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
+from instruments.IRSwap import InterestRateSwap
+
+
+_INDEX_BY_CURRENCY: dict[str, list[FloatingIndex]] = {
+    'RUB': [
+        FloatingIndex.RUONIA_AVG, FloatingIndex.RUONIA_COMP,
+        FloatingIndex.RUSFAR_RUB_3M, FloatingIndex.RUSFAR_RUB_ON,
+        FloatingIndex.RUB_KEY_RATE,
+    ],
+    'USD': [FloatingIndex.SOFR_COMP],
+    'EUR': [
+        FloatingIndex.ESTR_COMP,
+        FloatingIndex.EURIBOR_EUR_1M,
+        FloatingIndex.EURIBOR_EUR_3M,
+        FloatingIndex.EURIBOR_EUR_6M,
+    ],
+    'CNY': [FloatingIndex.RUSFARCNY_COMP],
+}
 
 
 def _get_global_valuation_date() -> date:
@@ -25,12 +43,18 @@ def render_add_instrument_form():
             st.rerun()
             
         st.divider()
-        instrument_type = st.radio('Тип инструмента', options=['Валютный форвард', 'Валютный своп'], horizontal=True)
+        instrument_type = st.radio(
+            'Тип инструмента',
+            options=['Валютный форвард', 'Валютный своп', 'Процентный своп (IRS/OIS)'],
+            horizontal=True,
+        )
         st.divider()
         if instrument_type == 'Валютный форвард':
             return render_forward_form()
-        else:
+        elif instrument_type == 'Валютный своп':
             return render_swap_form()
+        else:
+            return render_irs_form()
 
 
 def render_forward_form():
@@ -76,6 +100,87 @@ def render_swap_form():
     submitted = st.button('Добавить в портфель', width="stretch", key='swap_submit')
     if submitted:
         return CurrencySwapContract(instrument_id=f"{inst_id} {pair_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}", notional=fixed_sum, start_date=datetime.combine(start_date, datetime.min.time()), end_date=datetime.combine(end_date, datetime.min.time()), currency_pair=pair, base_currency=base_currency, quote_currency=quote_currency, fixed_sum_currency=base_currency, fixed_sum=fixed_sum, spot_rate=spot_rate, swap_points=swap_points, reverse_rate=reverse_rate, direction=Direction.BUY if direction == 'Buy' else Direction.SELL)
+
+
+def render_irs_form():
+    """Отрисовывает форму добавления процентного свопа (IRS/OIS)."""
+    default_date = _get_global_valuation_date()
+
+    st.subheader('Основные параметры')
+    inst_id = st.text_input('ID инструмента', value='IRS', key='irs_inst_id')
+    col1, col2 = st.columns(2)
+    direction = col1.selectbox('Направление', ['Buy', 'Sell'], key='irs_direction',
+                               help='Buy = Payer (платит fixed), Sell = Receiver (платит float)')
+    notional = col2.number_input('Номинал', min_value=0.0, value=1_000_000.0,
+                                 format='%.0f', key='irs_notional')
+    col1, col2 = st.columns(2)
+    start_date = col1.date_input('Дата начала', value=default_date, key='irs_start')
+    end_date = col2.date_input('Дата окончания', value=default_date, key='irs_end')
+
+    st.divider()
+    st.subheader('Плавающая нога')
+    currency_str = st.selectbox(
+        'Валюта свопа', [c.value for c in Currency], key='irs_currency'
+    )
+    available_indices = _INDEX_BY_CURRENCY.get(currency_str, list(FloatingIndex))
+    floating_index_val = st.selectbox(
+        'Плавающий индекс',
+        options=[idx.value for idx in available_indices],
+        key='irs_float_index',
+    )
+    floating_index = FloatingIndex(floating_index_val)
+    floating_spread = st.number_input(
+        'Спред (bp)', value=0.0, step=0.1, format='%.1f', key='irs_float_spread'
+    )
+    col1, col2 = st.columns(2)
+    float_dc = col1.selectbox(
+        'Day count', [dc.value for dc in DayCountConvention], key='irs_float_dc'
+    )
+    float_timing = col2.selectbox(
+        'Частота', [pt.value for pt in PaymentTiming], key='irs_float_timing'
+    )
+    float_offset = st.selectbox(
+        'Offset', [o.value for o in OffsetRule], key='irs_float_offset'
+    )
+
+    st.divider()
+    st.subheader('Фиксированная нога')
+    fixed_rate = st.number_input(
+        'Фиксированная ставка (%)', min_value=0.0, max_value=100.0,
+        value=16.0, step=0.01, format='%.2f', key='irs_fixed_rate'
+    )
+    col1, col2 = st.columns(2)
+    fixed_dc = col1.selectbox(
+        'Day count', [dc.value for dc in DayCountConvention], key='irs_fixed_dc'
+    )
+    fixed_timing = col2.selectbox(
+        'Частота', [pt.value for pt in PaymentTiming], key='irs_fixed_timing'
+    )
+    fixed_offset = st.selectbox(
+        'Offset', [o.value for o in OffsetRule], key='irs_fixed_offset'
+    )
+
+    submitted = st.button('Добавить в портфель', width='stretch', key='irs_submit')
+    if submitted:
+        auto_id = f"{inst_id} {currency_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}"
+        return InterestRateSwap(
+            instrument_id=auto_id,
+            notional=notional,
+            direction=Direction.BUY if direction == 'Buy' else Direction.SELL,
+            start_date=datetime.combine(start_date, datetime.min.time()),
+            end_date=datetime.combine(end_date, datetime.min.time()),
+            currency=Currency(currency_str),
+            fixed_rate=fixed_rate / 100.0,
+            fixed_day_count=DayCountConvention(fixed_dc),
+            fixed_payment_timing=PaymentTiming(fixed_timing),
+            fixed_offset_rule=OffsetRule(fixed_offset),
+            floating_index=floating_index,
+            floating_spread=floating_spread,
+            floating_day_count=DayCountConvention(float_dc),
+            floating_payment_timing=PaymentTiming(float_timing),
+            floating_offset_rule=OffsetRule(float_offset),
+        )
+    return None
 
 
 def render_report_sidebar() -> None:
