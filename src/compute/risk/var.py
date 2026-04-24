@@ -2,14 +2,8 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm
 from datetime import datetime
-from compute.pricers.CurrencySwapPricer import CurrencySwapPricer
-from compute.pricers.ForwardPricer import ForwardPricer
 from instruments.BaseInstrument import BaseInstrument
-from instruments.FXForward import CurrencyForwardContract
-from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
-from instruments.IRSwap import InterestRateSwap
-from compute.pricers.IRSPricer import IRSPricer
 from compute.pricers.pricer_dispatch import get_pv_series as _get_pv_dispatch
 
 
@@ -34,61 +28,38 @@ def _resolve_target_column(df: pd.DataFrame) -> str:
 
 def historical(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level=0.95, window=252) -> tuple[pd.DataFrame, float]:
     """\n    Расчет VaR историческим методом.\n\n    :param instrument: Инструмент.\n    :param calc_start: Начальная дата для расчета.\n    :param calc_end: Конечная дата для расчета.\n    :param confidence_level: Доверительный интервал (0.95, 0.99).\n    :param window: количество дней в истории.\n    :return: Pnl и значение VaR .\n    """
-    returns = pd.DataFrame()
-    if isinstance(instrument, CurrencyForwardContract):
-        fxPricer = ForwardPricer(365)
-        returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, CurrencySwapContract):
-        swapPricer = CurrencySwapPricer(365)
-        returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, InterestRateSwap):
-        returns = IRSPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    if returns.empty:
-        raise ValueError('Не удалось получить историю PV для расчета исторического VaR.')
-    else:
-        pnl = to_pnl(returns)
-        if pnl.empty:
-            raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
-        else:
-            data = pnl.tail(min(window, len(pnl)))
-            horizon_days = max(1, (calc_end - calc_start).days)
-            scaled_returns = data * np.sqrt(horizon_days)
-            target_col = _resolve_target_column(scaled_returns)
-            scaled_returns = scaled_returns.sort_values(by=target_col).reset_index(drop=True)
-            alpha = 1 - confidence_level
-            var = scaled_returns[target_col].quantile(alpha)
-            return (scaled_returns, abs(float(var)))
+    pv = _get_pv_series(dataProvider, instrument, calc_start, calc_end, window + 1)
+    returns = pv.to_frame('price')
+    pnl = to_pnl(returns)
+    if pnl.empty:
+        raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
+    data = pnl.tail(min(window, len(pnl)))
+    horizon_days = max(1, (calc_end - calc_start).days)
+    scaled_returns = data * np.sqrt(horizon_days)
+    target_col = _resolve_target_column(scaled_returns)
+    scaled_returns = scaled_returns.sort_values(by=target_col).reset_index(drop=True)
+    alpha = 1 - confidence_level
+    var = scaled_returns[target_col].quantile(alpha)
+    return (scaled_returns, abs(float(var)))
 
 
 def parametric(dataProvider: DataProvider, instrument: BaseInstrument, calc_start: datetime, calc_end: datetime, confidence_level=0.95, window=252) -> float:
     """\n    Параметрический VaR по формуле: -Mean + Std * Z-score\n    """
-    returns = pd.DataFrame()
-    if isinstance(instrument, CurrencyForwardContract):
-        fxPricer = ForwardPricer(365)
-        returns = fxPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, CurrencySwapContract):
-        swapPricer = CurrencySwapPricer(365)
-        returns = swapPricer.calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    elif isinstance(instrument, InterestRateSwap):
-        returns = IRSPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
-    if returns.empty:
-        raise ValueError('Не удалось получить историю PV для расчета параметрического VaR.')
-    else:
-        pnl = to_pnl(returns)
-        if pnl.empty:
-            raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
-        else:
-            data = pnl.tail(min(window, len(pnl)))
-            target_col = _resolve_target_column(data)
-            pnl_series = data[target_col]
-            z_score = norm.ppf(confidence_level)
-            var_1d = -pnl_series.mean() + pnl_series.std() * z_score
-            horizon_days = max(1, (calc_end - calc_start).days)
-            var_h = var_1d * np.sqrt(horizon_days)
-            if np.isnan(var_h):
-                raise ValueError('Получен NaN при расчете параметрического VaR. Проверьте входные данные.')
-            else:
-                return abs(float(var_h))
+    pv = _get_pv_series(dataProvider, instrument, calc_start, calc_end, window + 1)
+    returns = pv.to_frame('price')
+    pnl = to_pnl(returns)
+    if pnl.empty:
+        raise ValueError('История доходностей пуста, невозможно рассчитать VaR.')
+    data = pnl.tail(min(window, len(pnl)))
+    target_col = _resolve_target_column(data)
+    pnl_series = data[target_col]
+    z_score = norm.ppf(confidence_level)
+    var_1d = -pnl_series.mean() + pnl_series.std() * z_score
+    horizon_days = max(1, (calc_end - calc_start).days)
+    var_h = var_1d * np.sqrt(horizon_days)
+    if np.isnan(var_h):
+        raise ValueError('Получен NaN при расчете параметрического VaR. Проверьте входные данные.')
+    return abs(float(var_h))
 
 
 

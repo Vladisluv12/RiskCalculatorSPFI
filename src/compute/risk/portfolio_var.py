@@ -2,15 +2,8 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm
 from datetime import datetime
-from compute.pricers.CurrencySwapPricer import CurrencySwapPricer
-from compute.pricers.ForwardPricer import ForwardPricer
-from compute.risk.var import _resolve_target_column
 from instruments.BaseInstrument import BaseInstrument
-from instruments.FXForward import CurrencyForwardContract
-from instruments.FXSwap import CurrencySwapContract
 from utils.DataProvider import DataProvider
-from instruments.IRSwap import InterestRateSwap
-from compute.pricers.IRSPricer import IRSPricer
 from compute.pricers.pricer_dispatch import get_pv_series as _get_pv_dispatch
 
 
