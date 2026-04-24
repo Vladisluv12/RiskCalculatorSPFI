@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'sr
 
 import pytest
 import pandas as pd
-from datetime import date, datetime
+from datetime import datetime
 from compute.pricers.swap_utils import (
     generate_payment_schedule, year_fraction, discount_factor_series
 )
@@ -46,6 +46,14 @@ def test_semi_annually_schedule():
         datetime(2024, 1, 1), datetime(2025, 1, 1), PaymentTiming.SEMI_ANNUALLY
     )
     assert len(result) == 2
+    assert result[-1] == datetime(2025, 1, 1)
+
+
+def test_monthly_schedule_twelve_dates():
+    result = generate_payment_schedule(
+        datetime(2024, 1, 1), datetime(2025, 1, 1), PaymentTiming.MONTHLY
+    )
+    assert len(result) == 12
     assert result[-1] == datetime(2025, 1, 1)
 
 
