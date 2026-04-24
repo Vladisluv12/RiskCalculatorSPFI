@@ -163,19 +163,25 @@ st.divider()
 
 # Матрица экспозиций
 st.subheader("Матрица экспозиций на факторы риска")
-risk_factors = sorted({inst.currency_pair.value for inst in supported})
+
+def _risk_factor(inst) -> str:
+    if isinstance(inst, InterestRateSwap):
+        return inst.currency.value
+    return inst.currency_pair.value
+
+risk_factors = sorted({_risk_factor(inst) for inst in supported})
 rows = []
 for inst in supported:
-    inst_pair = inst.currency_pair.value
+    inst_rf = _risk_factor(inst)
     row = {"Инструмент": inst.instrument_id, "VaR инструмента": individual_vars.get(inst.instrument_id, 0.0)}
     for rf in risk_factors:
-        row[rf] = individual_vars.get(inst.instrument_id, 0.0) if inst_pair == rf else 0.0
+        row[rf] = individual_vars.get(inst.instrument_id, 0.0) if inst_rf == rf else 0.0
     rows.append(row)
 total_row = {"Инструмент": "Портфель (итого)", "VaR инструмента": sum(individual_vars.values())}
 for rf in risk_factors:
     total_row[rf] = sum(
         individual_vars.get(inst.instrument_id, 0.0)
-        for inst in supported if inst.currency_pair.value == rf
+        for inst in supported if _risk_factor(inst) == rf
     )
 rows.append(total_row)
 exposure_df = pd.DataFrame(rows).set_index("Инструмент")
