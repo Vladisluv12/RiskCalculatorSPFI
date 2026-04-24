@@ -38,11 +38,15 @@ class IRSPricer:
             contract.start_date, contract.end_date, contract.fixed_payment_timing
         )
 
-        # Fixed leg: PV_fixed = sum over T_i of notional * fixed_rate * dcf_i * DF(t, T_i)
+        # Fixed leg — only future coupons (T_i > t) contribute
         pv_fixed = pd.Series(0.0, index=full_index)
         prev_date = contract.start_date
         for pmt_date in payment_dates:
             pmt_ts = pd.Timestamp(pmt_date)
+            future_mask = full_index < pmt_ts
+            if not future_mask.any():
+                prev_date = pmt_date
+                continue
             dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.fixed_day_count)
             tenor_i = pd.Series(
                 [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
@@ -50,7 +54,9 @@ class IRSPricer:
                 index=full_index,
             )
             df_i = swap_utils.discount_factor_series(currency, tenor_i, curve_daily)
-            pv_fixed += contract.notional * contract.fixed_rate * dcf * df_i
+            coupon_contribution = pd.Series(0.0, index=full_index)
+            coupon_contribution[future_mask] = (contract.notional * contract.fixed_rate * dcf * df_i)[future_mask]
+            pv_fixed += coupon_contribution
             prev_date = pmt_date
 
         # Floating leg (par-float): PV_float = notional * (DF(t, start) - DF(t, end))

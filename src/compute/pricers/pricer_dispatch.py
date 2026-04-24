@@ -8,6 +8,7 @@ from instruments.IRSwap import InterestRateSwap
 from utils.DataProvider import DataProvider
 from compute.pricers.ForwardPricer import ForwardPricer
 from compute.pricers.CurrencySwapPricer import CurrencySwapPricer
+from compute.pricers.IRSPricer import IRSPricer
 
 
 def get_pv_series(
@@ -22,7 +23,6 @@ def get_pv_series(
     elif isinstance(instrument, CurrencySwapContract):
         returns = CurrencySwapPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
     elif isinstance(instrument, InterestRateSwap):
-        from compute.pricers.IRSPricer import IRSPricer  # deferred to avoid circular import at module load
         returns = IRSPricer(365).calculate_pv(instrument, dataProvider, calc_start, calc_end)
     else:
         raise ValueError(f'Неизвестный тип инструмента: {type(instrument).__name__}')
