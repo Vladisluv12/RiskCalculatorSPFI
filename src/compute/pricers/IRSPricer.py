@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from instruments.IRSwap import InterestRateSwap
-from instruments.enums import Direction
+from instruments.enums import Direction, FloatingIndex
 from utils.DataProvider import DataProvider
 from compute.pricers import swap_utils
 
@@ -18,6 +18,9 @@ class IRSPricer:
         calc_start: datetime,
         calc_end: datetime,
     ) -> pd.DataFrame:
+        if contract.start_date >= contract.end_date:
+            return pd.DataFrame(dtype=float)
+
         ddt = timedelta(days=5)
         currency = contract.currency.value
 
@@ -83,7 +86,7 @@ class IRSPricer:
             annuity += contrib
             prev_date = pmt_date
 
-        # DF to start and end of swap (for par-float base)
+        # DF to start and end of swap (used in both OIS par-float and flat-fixing branches)
         start_ts = pd.Timestamp(contract.start_date)
         end_ts = pd.Timestamp(contract.end_date)
 
@@ -107,18 +110,32 @@ class IRSPricer:
         floating_index = contract.floating_index
         spread_fraction = contract.floating_spread / 10000.0  # bp → fraction
 
+        # Indices that support flat-fixing approximation for the floating leg
+        _FLAT_FIXING_INDICES = {
+            FloatingIndex.EURIBOR_EUR_1M,
+            FloatingIndex.EURIBOR_EUR_3M,
+            FloatingIndex.EURIBOR_EUR_6M,
+            FloatingIndex.RUSFAR_RUB_3M,
+            FloatingIndex.RUSFAR_RUB_ON,
+            FloatingIndex.RUB_KEY_RATE,
+        }
+
         if floating_index.is_ois_based:
-            # Par-float: PV_float_no_spread = N*(DF_start - DF_end)
+            # Par-float (exact when no basis): PV_float = N*(DF_start - DF_end) + N*spread*annuity
             pv_float = contract.notional * (df_start - df_end)
-            if spread_fraction != 0.0:
-                pv_float += contract.notional * spread_fraction * annuity
-        else:
-            # Non-OIS index (EURIBOR, RUSFAR 3M): flat forward = current fixing
+            pv_float += contract.notional * spread_fraction * annuity
+        elif floating_index in _FLAT_FIXING_INDICES:
+            # Flat forward approximation: current fixing used for all future periods
             fixing_df = dataProvider.get_fixing_data(
                 floating_index, calc_start - ddt, calc_end
             )  # fixing in % p.a.
             fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # → fraction
             pv_float = contract.notional * (fixing_daily + spread_fraction) * annuity
+        else:
+            raise NotImplementedError(
+                f"Floating index {floating_index} is not supported in IRSPricer. "
+                f"Cross-currency or exotic indices require a dedicated pricer."
+            )
 
         if contract.direction == Direction.BUY:
             npv = pv_float - pv_fixed

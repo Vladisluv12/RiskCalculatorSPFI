@@ -4,7 +4,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from instruments.enums import DayCountConvention, PaymentTiming
-from compute.modelling.RiskFreeRate import get_risk_free_rate
+from compute.modelling.RiskFreeRate import get_risk_free_rate, get_ois_rate
 
 
 _TIMING_DELTA = {
@@ -95,6 +95,5 @@ def ois_discount_factor_series(
     -------
     pd.Series : DF = 1 / (1 + r)^T, values in (0, 1].
     """
-    from compute.modelling.RiskFreeRate import get_ois_rate
     r = get_ois_rate(tenor_series, ois_curve_daily)  # fraction
     return (1.0 / (1.0 + r) ** tenor_series).rename('ois_df')
