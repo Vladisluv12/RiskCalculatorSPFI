@@ -64,8 +64,7 @@ def get_risk_free_rate(currency: str, target_tenor, curve_data: pd.DataFrame) ->
         tau = row['T1']
         g = [row[f'G{i}'] for i in range(1, 10)]
 
-        # target_tenor may be scalar or Series (same index as curve_data)
-        t = target_tenor if is_series_tenor else target_tenor
+        t = target_tenor
 
         term1 = (beta1 + beta2) * (tau / t) * (1 - np.exp(-t / tau))
         term2 = -beta2 * np.exp(-t / tau)
@@ -134,3 +133,68 @@ def get_risk_free_rate(currency: str, target_tenor, curve_data: pd.DataFrame) ->
 
     else:
         raise ValueError(f'Валюта {currency} не поддерживается.')
+
+
+_OIS_TENOR_YEARS: dict[str, float] = {
+    "1w": 7 / 365,
+    "1m": 30 / 365,
+    "3m": 90 / 365,
+    "6m": 180 / 365,
+    "1y": 1.0,
+    "2y": 2.0,
+    "3y": 3.0,
+    "5y": 5.0,
+    "7y": 7.0,
+    "10y": 10.0,
+}
+
+
+def get_ois_rate(
+    tenor_series: pd.Series,
+    ois_curve: pd.DataFrame,
+) -> pd.Series:
+    """
+    Interpolate OIS spot rate for each (date, tenor) pair.
+
+    Parameters
+    ----------
+    tenor_series : pd.Series
+        Index = dates, values = tenor in years (e.g. 0.5 for 6m).
+    ois_curve : pd.DataFrame
+        Index = dates, columns = ["1w","1m",...,"10y"], values = % per annum.
+        Need not cover every date — nearest prior date is used (ffill).
+
+    Returns
+    -------
+    pd.Series
+        OIS rate as fraction (e.g. 0.16 for 16%), same index as tenor_series.
+        NaN where OIS data is entirely unavailable for a date.
+    """
+    x_knots = np.array([_OIS_TENOR_YEARS[c] for c in ois_curve.columns])
+    ois_index = ois_curve.index
+    results = []
+
+    for date in tenor_series.index:
+        tenor = float(tenor_series.at[date])
+        tenor = max(tenor, x_knots[0])  # clip to shortest available tenor
+
+        # Find nearest available OIS date (forward-fill)
+        available = ois_index[ois_index <= date]
+        if len(available) == 0:
+            results.append(np.nan)
+            continue
+        row = ois_curve.loc[available[-1]]
+
+        y_rates = row.values.astype(float)
+        valid = ~np.isnan(y_rates)
+        if valid.sum() < 2:
+            results.append(np.nan)
+            continue
+
+        rate_pct = float(interp1d(
+            x_knots[valid], y_rates[valid],
+            kind='linear', fill_value='extrapolate',
+        )(tenor))
+        results.append(rate_pct / 100.0)  # % → fraction
+
+    return pd.Series(results, index=tenor_series.index, name='ois_rate')
