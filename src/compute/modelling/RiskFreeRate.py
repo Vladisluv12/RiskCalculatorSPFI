@@ -170,13 +170,15 @@ def get_ois_rate(
         OIS rate as fraction (e.g. 0.16 for 16%), same index as tenor_series.
         NaN where OIS data is entirely unavailable for a date.
     """
-    x_knots = np.array([_OIS_TENOR_YEARS[c] for c in ois_curve.columns])
+    # Sort columns by tenor so interp1d receives monotonically increasing x
+    col_order = sorted(ois_curve.columns, key=lambda c: _OIS_TENOR_YEARS[c])
+    ois_curve = ois_curve[col_order]
+    x_knots = np.array([_OIS_TENOR_YEARS[c] for c in col_order])
     ois_index = ois_curve.index
     results = []
 
     for date in tenor_series.index:
         tenor = float(tenor_series.at[date])
-        tenor = max(tenor, x_knots[0])  # clip to shortest available tenor
 
         # Find nearest available OIS date (forward-fill)
         available = ois_index[ois_index <= date]
@@ -190,6 +192,9 @@ def get_ois_rate(
         if valid.sum() < 2:
             results.append(np.nan)
             continue
+
+        # Clip tenor to range of available (non-NaN) knots for this row
+        tenor = max(tenor, x_knots[valid][0])
 
         rate_pct = float(interp1d(
             x_knots[valid], y_rates[valid],
