@@ -21,27 +21,30 @@ class IRSPricer:
         ddt = timedelta(days=5)
         currency = contract.currency.value
 
-        curve_data = dataProvider.get_curve_data(currency, calc_start - ddt, calc_end)
-        curve_data = curve_data[~curve_data.index.duplicated(keep='last')]
-
+        # Load OIS discount curve
+        ois_data = dataProvider.get_ois_curve_data(currency, calc_start - ddt, calc_end)
+        ois_data = ois_data[~ois_data.index.duplicated(keep='last')]
         full_index = pd.date_range(
             start=pd.Timestamp(calc_start - ddt),
             end=pd.Timestamp(calc_end),
             freq='D',
         )
-        curve_daily = curve_data.reindex(full_index).ffill()
+        ois_daily = ois_data.reindex(full_index).ffill()
 
-        if curve_daily.dropna(how='all').empty:
+        if ois_daily.dropna(how='all').empty:
             return pd.DataFrame(dtype=float)
 
-        payment_dates = swap_utils.generate_payment_schedule(
+        payment_dates_fixed = swap_utils.generate_payment_schedule(
             contract.start_date, contract.end_date, contract.fixed_payment_timing
         )
+        payment_dates_float = swap_utils.generate_payment_schedule(
+            contract.start_date, contract.end_date, contract.floating_payment_timing
+        )
 
-        # Fixed leg — only future coupons (T_i > t) contribute
+        # Fixed leg: PV_fixed = Σ N * r_fixed * dcf_i * DF_OIS(t, T_i)
         pv_fixed = pd.Series(0.0, index=full_index)
         prev_date = contract.start_date
-        for pmt_date in payment_dates:
+        for pmt_date in payment_dates_fixed:
             pmt_ts = pd.Timestamp(pmt_date)
             future_mask = full_index < pmt_ts
             if not future_mask.any():
@@ -53,17 +56,34 @@ class IRSPricer:
                  for t in full_index],
                 index=full_index,
             )
-            df_i = swap_utils.discount_factor_series(currency, tenor_i, curve_daily)
-            coupon_contribution = pd.Series(0.0, index=full_index)
-            coupon_contribution[future_mask] = (contract.notional * contract.fixed_rate * dcf * df_i)[future_mask]
-            pv_fixed += coupon_contribution
+            df_i = swap_utils.ois_discount_factor_series(tenor_i, ois_daily)
+            coupon = pd.Series(0.0, index=full_index)
+            coupon[future_mask] = (contract.notional * contract.fixed_rate * dcf * df_i)[future_mask]
+            pv_fixed += coupon
             prev_date = pmt_date
 
-        # Floating leg (par-float): PV_float = notional * (DF(t, start) - DF(t, end))
-        # Note: floating_spread, floating_index, floating_day_count,
-        # floating_payment_timing are NOT used — par-float ignores actual
-        # floating cashflows and approximates the full floating leg NPV
-        # using only discount factors.
+        # Floating leg annuity: Σ dcf_float_i * DF_OIS(t, T_i)
+        annuity = pd.Series(0.0, index=full_index)
+        prev_date = contract.start_date
+        for pmt_date in payment_dates_float:
+            pmt_ts = pd.Timestamp(pmt_date)
+            future_mask = full_index < pmt_ts
+            if not future_mask.any():
+                prev_date = pmt_date
+                continue
+            dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.floating_day_count)
+            tenor_i = pd.Series(
+                [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
+                 for t in full_index],
+                index=full_index,
+            )
+            df_i = swap_utils.ois_discount_factor_series(tenor_i, ois_daily)
+            contrib = pd.Series(0.0, index=full_index)
+            contrib[future_mask] = (dcf * df_i)[future_mask]
+            annuity += contrib
+            prev_date = pmt_date
+
+        # DF to start and end of swap (for par-float base)
         start_ts = pd.Timestamp(contract.start_date)
         end_ts = pd.Timestamp(contract.end_date)
 
@@ -72,9 +92,8 @@ class IRSPricer:
              for t in full_index],
             index=full_index,
         )
-        df_end = swap_utils.discount_factor_series(currency, tenor_end, curve_daily)
+        df_end = swap_utils.ois_discount_factor_series(tenor_end, ois_daily)
 
-        # DF to start: 1.0 for t >= start_date, computed for t < start_date
         df_start = pd.Series(1.0, index=full_index)
         before_start_mask = full_index < start_ts
         if before_start_mask.any():
@@ -82,10 +101,24 @@ class IRSPricer:
                 [(start_ts - t).days / self.days_in_year for t in full_index],
                 index=full_index,
             ).clip(lower=1.0 / self.days_in_year)
-            df_start_pre = swap_utils.discount_factor_series(currency, tenor_start, curve_daily)
+            df_start_pre = swap_utils.ois_discount_factor_series(tenor_start, ois_daily)
             df_start[before_start_mask] = df_start_pre[before_start_mask]
 
-        pv_float = contract.notional * (df_start - df_end)
+        floating_index = contract.floating_index
+        spread_fraction = contract.floating_spread / 10000.0  # bp → fraction
+
+        if floating_index.is_ois_based:
+            # Par-float: PV_float_no_spread = N*(DF_start - DF_end)
+            pv_float = contract.notional * (df_start - df_end)
+            if spread_fraction != 0.0:
+                pv_float += contract.notional * spread_fraction * annuity
+        else:
+            # Non-OIS index (EURIBOR, RUSFAR 3M): flat forward = current fixing
+            fixing_df = dataProvider.get_fixing_data(
+                floating_index, calc_start - ddt, calc_end
+            )  # fixing in % p.a.
+            fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # → fraction
+            pv_float = contract.notional * (fixing_daily + spread_fraction) * annuity
 
         if contract.direction == Direction.BUY:
             npv = pv_float - pv_fixed

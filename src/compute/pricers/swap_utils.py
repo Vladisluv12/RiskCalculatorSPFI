@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 from instruments.enums import DayCountConvention, PaymentTiming
 from compute.modelling.RiskFreeRate import get_risk_free_rate
 
+
 _TIMING_DELTA = {
     PaymentTiming.MONTHLY: relativedelta(months=1),
     PaymentTiming.QUARTERLY: relativedelta(months=3),
@@ -73,3 +74,27 @@ def discount_factor_series(
     r_df = get_risk_free_rate(currency, tenor_series, curve_daily)
     r = r_df['rf_rate']
     return (1.0 / (1.0 + r) ** tenor_series).rename('df')
+
+
+def ois_discount_factor_series(
+    tenor_series: pd.Series,
+    ois_curve_daily: pd.DataFrame,
+) -> pd.Series:
+    """
+    OIS discount factor for each (date, tenor).
+
+    Parameters
+    ----------
+    tenor_series : pd.Series
+        Index = dates, values = tenor in years.
+    ois_curve_daily : pd.DataFrame
+        OIS curve (daily reindex already done by caller).
+        Columns = ["1w","1m",...,"10y"], values = % per annum.
+
+    Returns
+    -------
+    pd.Series : DF = 1 / (1 + r)^T, values in (0, 1].
+    """
+    from compute.modelling.RiskFreeRate import get_ois_rate
+    r = get_ois_rate(tenor_series, ois_curve_daily)  # fraction
+    return (1.0 / (1.0 + r) ** tenor_series).rename('ois_df')
