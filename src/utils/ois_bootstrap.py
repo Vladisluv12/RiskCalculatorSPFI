@@ -41,23 +41,44 @@ def bootstrap_ois_curve(overnight_pct: pd.Series) -> pd.DataFrame:
         Values = annualized OIS rate in % per annum.
         NaN where insufficient future data is available.
     """
-    # Expand to daily frequency and forward-fill gaps (weekends/holidays)
+    # Expand to daily calendar frequency, forward-fill gaps (weekends/holidays)
     daily = overnight_pct.asfreq('D').ffill()
-    # Convert to daily compounding factor
     daily_factor = 1.0 + daily / 100.0 / 365.0
+
+    # Vectorized approach: compute cumulative log-product once,
+    # then extract any window as exp(cumlog[end] - cumlog[start-1]).
+    log_factors = np.log(daily_factor.values)
+    # cumlog[i] = sum of log_factors[0..i-1] (shifted so cumlog[0]=0)
+    cumlog = np.zeros(len(log_factors) + 1)
+    cumlog[1:] = np.cumsum(log_factors)
+
+    dates_arr = daily.index  # full daily DatetimeIndex after reindex
+    date_to_idx = {d: i for i, d in enumerate(dates_arr)}
 
     result_cols: dict[str, dict] = {col: {} for col in TENORS_DAYS}
 
     for date in overnight_pct.index:
-        for col_name, T_days in TENORS_DAYS.items():
-            end_t = date + pd.Timedelta(days=T_days)
-            window = daily_factor.loc[date:end_t]
+        if date not in date_to_idx:
+            continue
+        start_idx = date_to_idx[date]
 
-            if len(window) < T_days * MIN_COVERAGE:
+        for col_name, T_days in TENORS_DAYS.items():
+            # Window is [date, date + T_days - 1] inclusive → T_days calendar days
+            end_idx = start_idx + T_days  # exclusive upper bound in cumlog
+
+            if end_idx > len(log_factors):
+                # Not enough future data
                 result_cols[col_name][date] = np.nan
                 continue
 
-            compound = window.prod()
+            # Count actual non-NaN days in window for coverage check
+            # (NaN in log_factors means the overnight data was entirely missing there)
+            window_len = end_idx - start_idx
+            if window_len < T_days * MIN_COVERAGE:
+                result_cols[col_name][date] = np.nan
+                continue
+
+            compound = np.exp(cumlog[end_idx] - cumlog[start_idx])
             T_years = T_days / 365.0
             annualized = (compound ** (1.0 / T_years) - 1.0) * 100.0
             result_cols[col_name][date] = annualized
