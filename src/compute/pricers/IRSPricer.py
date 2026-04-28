@@ -6,6 +6,17 @@ from instruments.enums import Direction, FloatingIndex
 from utils.DataProvider import DataProvider
 from compute.pricers import swap_utils
 
+# Floating indices that use flat-fixing approximation (current fixing as forward rate).
+# OIS-based indices use par-float instead; exotic indices raise NotImplementedError.
+_FLAT_FIXING_INDICES: frozenset = frozenset({
+    FloatingIndex.EURIBOR_EUR_1M,
+    FloatingIndex.EURIBOR_EUR_3M,
+    FloatingIndex.EURIBOR_EUR_6M,
+    FloatingIndex.RUSFAR_RUB_3M,
+    FloatingIndex.RUSFAR_RUB_ON,
+    FloatingIndex.RUB_KEY_RATE,
+})
+
 
 class IRSPricer:
     def __init__(self, days_in_year: int = 365):
@@ -109,16 +120,6 @@ class IRSPricer:
 
         floating_index = contract.floating_index
         spread_fraction = contract.floating_spread / 10000.0  # bp → fraction
-
-        # Indices that support flat-fixing approximation for the floating leg
-        _FLAT_FIXING_INDICES = {
-            FloatingIndex.EURIBOR_EUR_1M,
-            FloatingIndex.EURIBOR_EUR_3M,
-            FloatingIndex.EURIBOR_EUR_6M,
-            FloatingIndex.RUSFAR_RUB_3M,
-            FloatingIndex.RUSFAR_RUB_ON,
-            FloatingIndex.RUB_KEY_RATE,
-        }
 
         if floating_index.is_ois_based:
             # Par-float (exact when no basis): PV_float = N*(DF_start - DF_end) + N*spread*annuity

@@ -193,8 +193,8 @@ def get_ois_rate(
             results.append(np.nan)
             continue
 
-        # Clip tenor to range of available (non-NaN) knots for this row
-        tenor = max(tenor, x_knots[valid][0])
+        # Clip tenor to range of available (non-NaN) knots to avoid extrapolation
+        tenor = float(np.clip(tenor, x_knots[valid][0], x_knots[valid][-1]))
 
         rate_pct = float(interp1d(
             x_knots[valid], y_rates[valid],

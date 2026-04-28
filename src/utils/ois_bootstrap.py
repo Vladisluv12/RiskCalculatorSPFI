@@ -71,8 +71,10 @@ def bootstrap_ois_curve(overnight_pct: pd.Series) -> pd.DataFrame:
                 result_cols[col_name][date] = np.nan
                 continue
 
-            # Count actual non-NaN days in window for coverage check
-            # (NaN in log_factors means the overnight data was entirely missing there)
+            # NaN propagation through cumlog handles missing data: if the overnight
+            # series has gaps at the start, np.exp(NaN) returns NaN naturally.
+            # The arithmetic window_len always equals T_days so the coverage threshold
+            # never triggers; NaN short-circuit below handles missing-data cases.
             window_len = end_idx - start_idx
             if window_len < T_days * MIN_COVERAGE:
                 result_cols[col_name][date] = np.nan
