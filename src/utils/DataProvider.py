@@ -138,7 +138,8 @@ class DataProvider:
                 f"OIS curve file not found: {filepath}. "
                 f"Run ois_bootstrap.build_and_save_ois_curves() first."
             )
-        df = pd.read_csv(filepath, index_col='date', parse_dates=True)
+        df = pd.read_csv(filepath, index_col='date')
+        df.index = pd.to_datetime(df.index)
         ddt = pd.Timedelta(days=5)
         mask = (df.index >= pd.Timestamp(first_date) - ddt) & (df.index <= pd.Timestamp(last_date))
         return df.loc[mask]
