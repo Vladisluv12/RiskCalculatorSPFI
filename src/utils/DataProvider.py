@@ -22,7 +22,9 @@ _FIXING_FILENAMES: dict[FloatingIndex, str] = {
     FloatingIndex.RUB_KEY_RATE:    "RUB KeyRate.csv",
 }
 
-_FIXING_IS_FRACTION: set[FloatingIndex] = {
+# Indices whose CSV files store rates as decimals (e.g. 0.05 = 5%).
+# get_fixing_data multiplies these by 100 so all fixings return in % per annum.
+_FIXING_STORED_AS_FRACTION: set[FloatingIndex] = {
     FloatingIndex.RUONIA_AVG,
     FloatingIndex.RUONIA_COMP,
     FloatingIndex.ESTR_COMP,
@@ -128,6 +130,6 @@ class DataProvider:
         df = df.set_index('date').sort_index()
         mask = (df.index >= pd.Timestamp(first_date)) & (df.index <= pd.Timestamp(last_date))
         result = df.loc[mask].copy()
-        if index in _FIXING_IS_FRACTION:
+        if index in _FIXING_STORED_AS_FRACTION:
             result['fixing'] = result['fixing'] * 100
         return result
