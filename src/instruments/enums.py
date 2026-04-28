@@ -55,3 +55,33 @@ class FloatingIndex(Enum):
     RUSFAR_RUB_ON = "RusFar RUB O/N"
     RUSFARCNY_COMP = "RUSFARCNY Comp."
     RUB_KEY_RATE = "RUB KeyRate"
+
+    @property
+    def is_ois_based(self) -> bool:
+        """True if this index IS the overnight rate (forward rate implied from OIS curve)."""
+        return self in {
+            FloatingIndex.RUONIA_AVG,
+            FloatingIndex.RUONIA_COMP,
+            FloatingIndex.ESTR_COMP,
+            FloatingIndex.SOFR_COMP,
+            FloatingIndex.RUSFARCNY_COMP,
+        }
+
+    @property
+    def currency(self) -> str:
+        """ISO currency code for this floating index."""
+        _map = {
+            FloatingIndex.RUONIA_AVG:      'RUB',
+            FloatingIndex.RUONIA_COMP:     'RUB',
+            FloatingIndex.RUSFAR_RUB_ON:   'RUB',
+            FloatingIndex.RUSFAR_RUB_3M:   'RUB',
+            FloatingIndex.RUB_KEY_RATE:    'RUB',
+            FloatingIndex.ESTR_COMP:       'EUR',
+            FloatingIndex.EURIBOR_EUR_1M:  'EUR',
+            FloatingIndex.EURIBOR_EUR_3M:  'EUR',
+            FloatingIndex.EURIBOR_EUR_6M:  'EUR',
+            FloatingIndex.SOFR_COMP:       'USD',
+            FloatingIndex.RUSFARCNY_COMP:  'CNY',
+            FloatingIndex.OIS_FX:          'RUB',
+        }
+        return _map[self]

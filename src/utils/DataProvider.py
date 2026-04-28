@@ -36,6 +36,13 @@ _FIXING_STORED_AS_FRACTION: set[FloatingIndex] = {
     FloatingIndex.RUB_KEY_RATE,
 }
 
+_OIS_FILENAMES: dict[str, str] = {
+    'RUB': 'rub_ois.csv',
+    'EUR': 'eur_ois.csv',
+    'USD': 'usd_ois.csv',
+    'CNY': 'cny_ois.csv',
+}
+
 class DataProvider:
     """
     Класс для загрузки данных по финансовым инструментам из CSV файлов.
@@ -108,6 +115,32 @@ class DataProvider:
         start = first_date
         end = last_date
         mask = (df.index >= start) & (df.index <= end)
+        return df.loc[mask]
+
+    def get_ois_curve_data(
+        self,
+        currency: str,
+        first_date: datetime,
+        last_date: datetime,
+    ) -> pd.DataFrame:
+        """
+        Загружает бутстрапированную OIS кривую для валюты.
+
+        Returns DataFrame: index=date, columns=["1w","1m","3m","6m","1y","2y","3y","5y","7y","10y"]
+        Values in % per annum.
+        """
+        filename = _OIS_FILENAMES.get(currency.upper())
+        if filename is None:
+            raise ValueError(f"OIS curve not available for currency {currency}.")
+        filepath = os.path.join(self.filepath, 'ois_curves', filename)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(
+                f"OIS curve file not found: {filepath}. "
+                f"Run ois_bootstrap.build_and_save_ois_curves() first."
+            )
+        df = pd.read_csv(filepath, index_col='date', parse_dates=True)
+        ddt = pd.Timedelta(days=5)
+        mask = (df.index >= pd.Timestamp(first_date) - ddt) & (df.index <= pd.Timestamp(last_date))
         return df.loc[mask]
 
     def get_fixing_data(
