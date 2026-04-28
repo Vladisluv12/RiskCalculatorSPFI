@@ -22,6 +22,18 @@ _FIXING_FILENAMES: dict[FloatingIndex, str] = {
     FloatingIndex.RUB_KEY_RATE:    "RUB KeyRate.csv",
 }
 
+_FIXING_IS_FRACTION: set[FloatingIndex] = {
+    FloatingIndex.RUONIA_AVG,
+    FloatingIndex.RUONIA_COMP,
+    FloatingIndex.ESTR_COMP,
+    FloatingIndex.SOFR_COMP,
+    FloatingIndex.OIS_FX,
+    FloatingIndex.RUSFAR_RUB_ON,
+    FloatingIndex.RUSFAR_RUB_3M,
+    FloatingIndex.RUSFARCNY_COMP,
+    FloatingIndex.RUB_KEY_RATE,
+}
+
 class DataProvider:
     """
     Класс для загрузки данных по финансовым инструментам из CSV файлов.
@@ -115,4 +127,7 @@ class DataProvider:
         df['date'] = pd.to_datetime(df['date'], format='%d.%m.%Y')
         df = df.set_index('date').sort_index()
         mask = (df.index >= pd.Timestamp(first_date)) & (df.index <= pd.Timestamp(last_date))
-        return df.loc[mask]
+        result = df.loc[mask].copy()
+        if index in _FIXING_IS_FRACTION:
+            result['fixing'] = result['fixing'] * 100
+        return result
