@@ -50,7 +50,10 @@ def build_lc_dataframe(supported: list, instrument_lc: dict) -> pd.DataFrame:
             "Инструмент": inst.instrument_id,
             "Направление": inst.direction.value,
             "Номинал": inst.notional,
-            "s% adj": instrument_lc.get(inst.instrument_id, {}).get("s_pct", 0.0),
+            "s (adj)": (
+                instrument_lc.get(inst.instrument_id, {}).get("s_bps")
+                or instrument_lc.get(inst.instrument_id, {}).get("s_pct", 0.0)
+            ),
             "LC (normal)": instrument_lc.get(inst.instrument_id, {}).get("normal", 0.0),
             "LC (stressed)": instrument_lc.get(inst.instrument_id, {}).get("stressed", 0.0),
         }
