@@ -176,6 +176,8 @@ def _make_eur_mock_dp():
     }, index=dates)
     dp.get_curve_data.return_value = eur_curve
     dp.get_ois_curve_data.return_value = ois_curve
+    fixing_df = pd.DataFrame({'fixing': [4.0] * 600}, index=dates)  # 4% EURIBOR
+    dp.get_fixing_data.return_value = fixing_df
     return dp
 
 

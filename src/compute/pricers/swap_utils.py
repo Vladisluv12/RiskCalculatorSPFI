@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-from instruments.enums import DayCountConvention, OffsetRule, PaymentTiming
+from instruments.enums import DayCountConvention, FloatingIndex, OffsetRule, PaymentTiming
 from compute.modelling.RiskFreeRate import get_risk_free_rate, get_ois_rate
 
 
@@ -149,3 +149,38 @@ def ibor_forward_rate(
     if dcf <= 0:
         raise ValueError(f"dcf must be positive; got {dcf!r} — indicates a schedule generation bug")
     return (p1 / p2 - 1.0) / dcf
+
+
+def ibor_forward_rate_with_basis(
+    floating_index: FloatingIndex,
+    tenor_start: pd.Series,
+    tenor_end: pd.Series,
+    dcf: float,
+    ois_daily: pd.DataFrame,
+    fixing_daily: pd.Series,
+) -> pd.Series:
+    """
+    IBOR forward rate = OIS forward(T1,T2) + basis,
+    where basis = ibor_fixing - ois_spot_at_ibor_tenor.
+
+    Preserves the actual IBOR market level (fixing) while using OIS
+    for the term-structure shape. Better than flat-fixing (ignores term
+    structure) or ZC-proxy (wrong credit level).
+    """
+    if dcf <= 0:
+        raise ValueError(f"dcf must be positive; got {dcf!r}")
+
+    # OIS forward for period [T1, T2]
+    df1 = ois_discount_factor_series(tenor_start, ois_daily)
+    df2 = ois_discount_factor_series(tenor_end,   ois_daily)
+    ois_fwd = (df1 / df2 - 1.0) / dcf
+
+    # OIS spot at the IBOR index tenor (e.g. 90/365 for 3M)
+    ibor_tenor_yrs = floating_index.ibor_ois_tenor_years
+    tenor_ibor = pd.Series(ibor_tenor_yrs, index=tenor_start.index)
+    ois_spot = get_ois_rate(tenor_ibor, ois_daily)  # already fraction
+
+    # basis = current fixing − OIS spot (both fraction)
+    basis = fixing_daily.reindex(tenor_start.index).ffill() - ois_spot
+
+    return ois_fwd + basis

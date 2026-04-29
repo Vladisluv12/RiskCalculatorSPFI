@@ -9,7 +9,7 @@ from compute.pricers.swap_utils import (
     generate_payment_schedule, year_fraction, discount_factor_series,
     ibor_forward_rate,
 )
-from instruments.enums import DayCountConvention, OffsetRule, PaymentTiming
+from instruments.enums import DayCountConvention, FloatingIndex, OffsetRule, PaymentTiming
 
 
 # --- generate_payment_schedule ---
@@ -248,3 +248,67 @@ def test_ibor_forward_rate_zero_dcf_raises():
     with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=mock_rfr):
         with pytest.raises(ValueError, match="dcf must be positive"):
             ibor_forward_rate('EUR', tenor_start, tenor_end, 0.0, pd.DataFrame(index=dates))
+
+
+# --- ibor_forward_rate_with_basis ---
+
+from compute.pricers.swap_utils import ibor_forward_rate_with_basis
+
+
+def _make_flat_ois_daily(rate_pct: float, n: int = 3) -> pd.DataFrame:
+    """Flat OIS DataFrame for testing (all tenors = rate_pct %)."""
+    dates = pd.date_range("2024-01-01", periods=n, freq="D")
+    cols = ["1w", "1m", "3m", "6m", "1y", "2y", "3y", "5y", "7y", "10y"]
+    return pd.DataFrame({c: [rate_pct] * n for c in cols}, index=dates)
+
+
+def test_ibor_forward_with_basis_zero_basis():
+    # Flat 4% OIS, fixing = 4% → basis = 0 → forward = ois_forward ≈ 4%
+    dates = pd.date_range("2024-01-01", periods=3, freq="D")
+    tenor_start = pd.Series([0.25, 0.25, 0.25], index=dates)
+    tenor_end   = pd.Series([0.50, 0.50, 0.50], index=dates)
+    ois_daily = _make_flat_ois_daily(4.0, n=3)
+    fixing_daily = pd.Series([0.04, 0.04, 0.04], index=dates)
+
+    result = ibor_forward_rate_with_basis(
+        FloatingIndex.EURIBOR_EUR_3M,
+        tenor_start, tenor_end, 0.25, ois_daily, fixing_daily,
+    )
+    # OIS forward on flat 4% curve ≈ 4% (slight difference due to compounding vs simple)
+    assert abs(result.iloc[0] - 0.04) < 0.001
+
+
+def test_ibor_forward_with_basis_positive_basis_shifts_all_forwards():
+    # fixing = 4.5%, OIS spot 3m = 4% → basis = +0.5%
+    # All forwards should be ~0.5% above OIS forwards
+    dates = pd.date_range("2024-01-01", periods=3, freq="D")
+    tenor_start = pd.Series([0.25, 0.25, 0.25], index=dates)
+    tenor_end   = pd.Series([0.50, 0.50, 0.50], index=dates)
+    ois_daily = _make_flat_ois_daily(4.0, n=3)
+    fixing_daily = pd.Series([0.045, 0.045, 0.045], index=dates)  # 4.5%
+
+    result_with_basis = ibor_forward_rate_with_basis(
+        FloatingIndex.EURIBOR_EUR_3M,
+        tenor_start, tenor_end, 0.25, ois_daily, fixing_daily,
+    )
+    fixing_zero = pd.Series([0.04, 0.04, 0.04], index=dates)  # zero basis
+    result_zero_basis = ibor_forward_rate_with_basis(
+        FloatingIndex.EURIBOR_EUR_3M,
+        tenor_start, tenor_end, 0.25, ois_daily, fixing_zero,
+    )
+
+    diff = result_with_basis.iloc[0] - result_zero_basis.iloc[0]
+    assert abs(diff - 0.005) < 1e-6  # basis = exactly +0.5%
+
+
+def test_ibor_forward_with_basis_zero_dcf_raises():
+    dates = pd.date_range("2024-01-01", periods=1)
+    with pytest.raises(ValueError, match="dcf must be positive"):
+        ibor_forward_rate_with_basis(
+            FloatingIndex.EURIBOR_EUR_3M,
+            pd.Series([0.25], index=dates),
+            pd.Series([0.50], index=dates),
+            0.0,
+            _make_flat_ois_daily(4.0, n=1),
+            pd.Series([0.04], index=dates),
+        )

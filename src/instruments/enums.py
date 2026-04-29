@@ -47,7 +47,6 @@ class FloatingIndex(Enum):
     RUONIA_COMP = "RUONIA Comp."
     ESTR_COMP = "ESTR Comp."
     SOFR_COMP = "SOFR Comp."
-    OIS_FX = "OIS FX"
     EURIBOR_EUR_1M = "Euribor EUR 1m"
     EURIBOR_EUR_3M = "Euribor EUR 3m"
     EURIBOR_EUR_6M = "Euribor EUR 6m"
@@ -82,6 +81,20 @@ class FloatingIndex(Enum):
             FloatingIndex.EURIBOR_EUR_6M:  'EUR',
             FloatingIndex.SOFR_COMP:       'USD',
             FloatingIndex.RUSFARCNY_COMP:  'CNY',
-            FloatingIndex.OIS_FX:          'RUB',
         }
+        return _map[self]
+
+    @property
+    def ibor_ois_tenor_years(self) -> float:
+        """OIS spot tenor (years) matching this IBOR index, for basis = fixing - OIS_spot."""
+        _map = {
+            FloatingIndex.EURIBOR_EUR_1M: 30 / 365,
+            FloatingIndex.EURIBOR_EUR_3M: 90 / 365,
+            FloatingIndex.EURIBOR_EUR_6M: 180 / 365,
+            FloatingIndex.RUSFAR_RUB_3M: 90 / 365,
+            FloatingIndex.RUSFAR_RUB_ON: 7 / 365,
+            FloatingIndex.RUB_KEY_RATE:  30 / 365,
+        }
+        if self not in _map:
+            raise ValueError(f"{self} has no IBOR OIS tenor mapping")
         return _map[self]

@@ -117,16 +117,10 @@ class IRSPricer:
             # Par-float (exact when no basis): PV_float = N*(DF_start - DF_end) + N*spread*annuity
             pv_float = contract.notional * (df_start - df_end)
             pv_float += contract.notional * spread_fraction * annuity
-        elif floating_index == FloatingIndex.OIS_FX:
-            raise NotImplementedError(
-                "OIS_FX requires a dedicated FX-basis pricer."
-            )
         else:
-            # ZC-curve-implied IBOR forward rates (EURIBOR, RUSFAR, RUB_KEY_RATE, etc.)
-            float_currency = floating_index.currency
-            zc_data = dataProvider.get_curve_data(float_currency, calc_start - ddt, calc_end)
-            zc_data = zc_data[~zc_data.index.duplicated(keep='last')]
-            zc_daily = zc_data.reindex(full_index).ffill()
+            # OIS-forward + basis: forward(T1,T2) = ois_fwd(T1,T2) + (ibor_fixing - ois_spot)
+            fixing_df = dataProvider.get_fixing_data(floating_index, calc_start - ddt, calc_end)
+            fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # % → fraction
 
             pv_float = pd.Series(0.0, index=full_index)
             prev_date = contract.start_date
@@ -150,8 +144,8 @@ class IRSPricer:
                     index=full_index,
                 )
                 df_ois_end = swap_utils.ois_discount_factor_series(tenor_end_i, ois_daily)
-                fwd = swap_utils.ibor_forward_rate(
-                    float_currency, tenor_start_i, tenor_end_i, dcf, zc_daily
+                fwd = swap_utils.ibor_forward_rate_with_basis(
+                    floating_index, tenor_start_i, tenor_end_i, dcf, ois_daily, fixing_daily
                 )
                 coupon = pd.Series(0.0, index=full_index)
                 coupon[future_mask] = (
