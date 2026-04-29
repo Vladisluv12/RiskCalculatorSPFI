@@ -4,13 +4,14 @@ Each function renders one configuration section and returns the collected values
 """
 
 import os
+import re
 import traceback
 
 import pandas as pd
 import streamlit as st
 
 from instruments.IRSwap import InterestRateSwap
-from utils.liquidity_io import list_liquidity_files, liquidity_dir_path, load_liquidity_csv
+from utils.liquidity_io import liquidity_dir_path, load_for_portfolio
 
 
 def render_parametric_inputs(supported: list) -> tuple:
@@ -82,7 +83,7 @@ def render_parametric_inputs(supported: list) -> tuple:
 
 
 def render_csv_inputs(supported: list) -> int:
-    """Render CSV liquidity file selection and load preview.
+    """Auto-load liquidity batch files for the current portfolio from data/liquidity/.
 
     Stores loaded DataFrame in session_state['lvar_liquidity_df'].
     Returns T (liquidation days).
@@ -93,79 +94,125 @@ def render_csv_inputs(supported: list) -> int:
         help="Масштабирующий T-фактор: sqrt((1+T)(1+2T) / (6T)).",
     )
 
-    st.subheader("Файл со спредами bid/ask")
     data_dir = st.session_state.get("data_dir", "src/data")
-    liq_files = list_liquidity_files(data_dir)
+    liq_dir = liquidity_dir_path(data_dir)
 
-    uploaded_file = None
-    selected_filepath = None
-
-    if liq_files:
-        selected_name = st.selectbox(
-            "Выберите файл из data/liquidity/", options=liq_files, key="lvar_liq_selectbox",
+    index_path = os.path.join(liq_dir, "index.csv")
+    if not os.path.exists(index_path):
+        st.warning(
+            f"Файл index.csv не найден в {liq_dir}. "
+            "Запустите `python utils/split_liquidity.py` для генерации батч-файлов."
         )
-        uploaded_file = st.file_uploader(
-            "Или загрузите другой файл (переопределяет выбор выше)", type=["csv"], key="lvar_liq_uploader",
-        )
-        if uploaded_file is None:
-            selected_filepath = os.path.join(liquidity_dir_path(data_dir), selected_name)
-    else:
-        uploaded_file = st.file_uploader(
-            "Загрузите CSV-файл со спредами", type=["csv"], key="lvar_liq_uploader",
-        )
+        st.session_state.pop("lvar_liquidity_df", None)
+        return int(T)
 
-    liq_source = uploaded_file if uploaded_file is not None else selected_filepath
-
-    if liq_source is not None:
-        try:
-            liq_df = load_liquidity_csv(liq_source)
+    try:
+        liq_df = load_for_portfolio(liq_dir, supported)
+        if liq_df.empty:
+            st.info("Ни один батч-файл не содержит котировок для инструментов портфеля.")
+            st.session_state.pop("lvar_liquidity_df", None)
+        else:
             st.session_state["lvar_liquidity_df"] = liq_df
             _render_csv_preview(liq_df, supported)
-        except Exception as e:
-            st.error(f"Ошибка загрузки файла ликвидности: {e}")
-            st.session_state.pop("lvar_liquidity_df", None)
-            with st.expander("Детали ошибки"):
-                st.code(traceback.format_exc())
-    else:
+    except Exception as e:
+        st.error(f"Ошибка загрузки ликвидности: {e}")
         st.session_state.pop("lvar_liquidity_df", None)
-        st.info("Выберите или загрузите файл со спредами для продолжения.")
+        with st.expander("Детали ошибки"):
+            st.code(traceback.format_exc())
 
     return int(T)
 
 
 def _render_csv_preview(liq_df: pd.DataFrame, supported: list) -> None:
     """Show matched tickers summary and warn about unmatched portfolio pairs."""
-    portfolio_pairs = {inst.currency_pair.value.replace("/", "") for inst in supported}
-    csv_pairs = {t.split("_")[0] for t in liq_df["ticker"].tolist()}
-    matched_pairs = portfolio_pairs & csv_pairs
-    unmatched_pairs = portfolio_pairs - csv_pairs
+    _IRS_OIS_RE = r"_(?:OIS|IRS)_"
 
-    st.markdown("**Сопоставленные инструменты:**")
-    matched_df = liq_df[liq_df["ticker"].str.split("_").str[0].isin(matched_pairs)]
+    fx_supported = [i for i in supported if hasattr(i, "currency_pair")]
+    irs_supported = [i for i in supported if isinstance(i, InterestRateSwap)]
 
-    if "date" in matched_df.columns:
-        summary = (
-            matched_df.groupby("ticker")["spread_pct"]
-            .agg(mean="mean", last="last", count="count")
-            .reset_index()
-            .rename(columns={"mean": "Средний спред", "last": "Последний спред", "count": "Дней"})
-        )
-        st.dataframe(
-            summary.set_index("ticker").style.format({
-                "Средний спред": "{:.4%}", "Последний спред": "{:.4%}", "Дней": "{:.0f}",
-            }),
-            width="stretch",
-        )
-    else:
-        st.dataframe(
-            matched_df.reset_index(drop=True).style.format(
-                {"bid": "{:.4f}", "ask": "{:.4f}", "spread_pct": "{:.4%}"}
-            ),
-            width="stretch",
-        )
+    def _pretty(ticker: str) -> str:
+        return ticker.replace("_", " ")
 
-    if unmatched_pairs:
-        st.warning(
-            f"Пары не найдены в CSV (будет использована параметрическая модель): "
-            f"{', '.join(sorted(unmatched_pairs))}"
-        )
+    # --- FX section ---
+    if fx_supported:
+        portfolio_pairs = {inst.currency_pair.value.replace("/", "") for inst in fx_supported}
+        fx_df = liq_df[~liq_df["ticker"].str.contains(_IRS_OIS_RE, regex=True, na=False)]
+        csv_pairs = {t.split("_")[0] for t in fx_df["ticker"].tolist()}
+        matched_pairs = portfolio_pairs & csv_pairs
+        unmatched_pairs = portfolio_pairs - csv_pairs
+
+        st.markdown("**Сопоставленные FX инструменты:**")
+        matched_df = fx_df[fx_df["ticker"].str.split("_").str[0].isin(matched_pairs)]
+
+        if "date" in matched_df.columns:
+            summary = (
+                matched_df.groupby("ticker")["spread_pct"]
+                .agg(mean="mean", last="last", count="count")
+                .reset_index()
+                .rename(columns={"mean": "Средний спред", "last": "Последний спред", "count": "Дней"})
+            )
+            st.dataframe(
+                summary.set_index("ticker").style.format({
+                    "Средний спред": "{:.4%}", "Последний спред": "{:.4%}", "Дней": "{:.0f}",
+                }),
+                width="stretch",
+            )
+        else:
+            st.dataframe(
+                matched_df.reset_index(drop=True).style.format(
+                    {"bid": "{:.4f}", "ask": "{:.4f}", "spread_pct": "{:.4%}"}
+                ),
+                width="stretch",
+            )
+
+        if unmatched_pairs:
+            st.warning(
+                f"Пары не найдены в CSV (будет использована параметрическая модель): "
+                f"{', '.join(sorted(unmatched_pairs))}"
+            )
+
+    # --- IRS / OIS section ---
+    if irs_supported:
+        irs_df = liq_df[liq_df["ticker"].str.contains(_IRS_OIS_RE, regex=True, na=False)].copy()
+        csv_irs_tickers = set(irs_df["ticker"].tolist())
+
+        matched_irs = [
+            i for i in irs_supported
+            if any(re.match(rf"{i.currency.value}_(OIS|IRS)_", t) for t in csv_irs_tickers)
+        ]
+        unmatched_irs = [i for i in irs_supported if i not in matched_irs]
+
+        if not irs_df.empty:
+            # s_bps = (ask - bid) * 10_000 — absolute spread, valid even near zero rates
+            irs_df = irs_df.assign(s_bps=(irs_df["ask"] - irs_df["bid"]) * 10_000)
+            st.markdown("**IRS/OIS спреды bid/ask:**")
+            if "date" in irs_df.columns:
+                irs_summary = (
+                    irs_df.groupby("ticker")["s_bps"]
+                    .agg(mean="mean", last="last", count="count")
+                    .reset_index()
+                    .rename(columns={"mean": "Средний спред", "last": "Последний спред", "count": "Дней"})
+                )
+                irs_summary["ticker"] = irs_summary["ticker"].apply(_pretty)
+                st.dataframe(
+                    irs_summary.set_index("ticker").style.format({
+                        "Средний спред": "{:.2f}", "Последний спред": "{:.2f}", "Дней": "{:.0f}",
+                    }),
+                    width="stretch",
+                )
+            else:
+                display_df = irs_df[["ticker", "bid", "ask", "s_bps"]].copy()
+                display_df = display_df.rename(columns={"s_bps": "Спред (bps)"})
+                display_df["ticker"] = display_df["ticker"].apply(_pretty)
+                st.dataframe(
+                    display_df.reset_index(drop=True).style.format(
+                        {"bid": "{:.6f}", "ask": "{:.6f}", "Спред (bps)": "{:.2f}"}
+                    ),
+                    width="stretch",
+                )
+
+        if unmatched_irs:
+            st.warning(
+                f"IRS/OIS без котировок в CSV (будет использована параметрическая модель): "
+                f"{', '.join(i.instrument_id for i in unmatched_irs)}"
+            )
