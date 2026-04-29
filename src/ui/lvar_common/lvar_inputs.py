@@ -15,7 +15,7 @@ from utils.liquidity_io import list_liquidity_files, liquidity_dir_path, load_li
 def render_parametric_inputs(supported: list) -> tuple:
     """Render parametric liquidity model inputs.
 
-    Returns (k, floor_spread, alpha, lambda_, T, avg_daily_volume).
+    Returns (k, floor_spread, alpha, lambda_, T, avg_daily_volume, k_irs, floor_spread_bps).
     """
     st.subheader("Параметры ликвидности")
     lc1, lc2, lc3 = st.columns(3)
@@ -43,9 +43,30 @@ def render_parametric_inputs(supported: list) -> tuple:
             help="Масштабирующий T-фактор: sqrt((1+T)(1+2T) / (6T)).",
         )
 
+    from instruments.IRSwap import InterestRateSwap
+    has_irs = any(isinstance(inst, InterestRateSwap) for inst in supported)
+    k_irs = 3.0
+    floor_spread_bps = 2.0
+    if has_irs:
+        st.subheader("Параметры ликвидности IRS")
+        st.caption(
+            "Спред котируется в базисных пунктах фиксированной ставки. "
+            "LC = ½ × DV01 × spread_bps."
+        )
+        irs_c1, irs_c2 = st.columns(2)
+        with irs_c1:
+            k_irs = st.number_input(
+                "k_irs - масштаб спреда IRS", value=3.0, min_value=0.1, step=0.1,
+                help="spread_bps(t) = max(k_irs × σ_rate_bps(t) × √tenor, floor_bps).",
+            )
+        with irs_c2:
+            floor_spread_bps = st.number_input(
+                "floor_bps - минимальный спред IRS (б.п.)", value=2.0, min_value=0.1, step=0.5,
+                help="Нижняя граница bid-ask спреда IRS в базисных пунктах.",
+            )
+
     st.subheader("Средний дневной объём торгов (ADV)")
     st.caption("0, чтобы не учитывать поправку на размер позиции.")
-    from instruments.IRSwap import InterestRateSwap
     unique_pairs = sorted({
         inst.currency.value if isinstance(inst, InterestRateSwap) else inst.currency_pair.value
         for inst in supported
@@ -57,7 +78,7 @@ def render_parametric_inputs(supported: list) -> tuple:
             raw_adv[pair] = st.number_input(pair, min_value=0.0, value=0.0, step=1_000_000.0, format="%.0f")
     avg_daily_volume = {k_: v for k_, v in raw_adv.items() if v > 0}
 
-    return k, floor_spread, alpha, lambda_, T, avg_daily_volume
+    return k, floor_spread, alpha, lambda_, T, avg_daily_volume, k_irs, floor_spread_bps
 
 
 def render_csv_inputs(supported: list) -> int:

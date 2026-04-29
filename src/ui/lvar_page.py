@@ -81,9 +81,10 @@ Liquidity cost отражает стоимость закрытия позици
 
 # Параметры ликвидности
 if liquidity_source == _PARAMETRIC:
-    k, floor_spread, alpha, lambda_, T, avg_daily_volume = render_parametric_inputs(supported)
+    k, floor_spread, alpha, lambda_, T, avg_daily_volume, k_irs, floor_spread_bps = render_parametric_inputs(supported)
 else:
     k, floor_spread, alpha, lambda_, avg_daily_volume = 3.0, 0.001, 0.10, 0.94, {}
+    k_irs, floor_spread_bps = 3.0, 2.0
     T = render_csv_inputs(supported)
 
 st.divider()
@@ -105,6 +106,7 @@ _params_key = (
     type_of_var, conf_level, int(horizon), window,
     liquidity_source,
     float(k), float(floor_spread), float(alpha), float(lambda_), int(T),
+    float(k_irs), float(floor_spread_bps),
     tuple(sorted(avg_daily_volume.items())),
     liquidity_spreads_key(liquidity_source, _CSV),
     tuple(inst.instrument_id for inst in supported),
@@ -143,6 +145,7 @@ if st.button("Рассчитать LVaR"):
         params = build_liquidity_params(
             liquidity_source, _CSV, lvar_instruments, calc_end,
             k, floor_spread, alpha, lambda_, avg_daily_volume,
+            k_irs=k_irs, floor_spread_bps=floor_spread_bps,
         )
 
         with st.spinner("Расчёт LVaR..."):

@@ -20,6 +20,8 @@ def build_liquidity_params(
     alpha: float,
     lambda_: float,
     avg_daily_volume: dict,
+    k_irs: float = 3.0,
+    floor_spread_bps: float = 2.0,
 ) -> LiquidityParams:
     """Build LiquidityParams for the selected liquidity source."""
     if liquidity_source == csv_label:
@@ -30,10 +32,14 @@ def build_liquidity_params(
         return LiquidityParams(
             observed_spreads=build_observed_spreads(liquidity_df, lvar_instruments, calc_end),
             avg_daily_volume={},
+            k_irs=k_irs,
+            floor_spread_bps=floor_spread_bps,
         )
     return LiquidityParams(
         k=k, floor_spread=floor_spread, alpha=alpha, lambda_=lambda_,
         avg_daily_volume=avg_daily_volume,
+        k_irs=k_irs,
+        floor_spread_bps=floor_spread_bps,
     )
 
 
