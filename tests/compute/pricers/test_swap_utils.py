@@ -183,6 +183,15 @@ def test_offset_one_day_from_saturday_gives_monday():
     assert result == [datetime(2024, 4, 1)]
 
 
+def test_offset_two_days_from_saturday_gives_tuesday():
+    # Saturday 2024-03-30: roll to Monday 2024-04-01 (counts as 1st BD), +1 more BD = Tuesday 2024-04-02
+    result = generate_payment_schedule(
+        datetime(2023, 9, 30), datetime(2024, 3, 30),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.TWO_DAYS
+    )
+    assert result == [datetime(2024, 4, 2)]
+
+
 # --- ibor_forward_rate ---
 
 def test_ibor_forward_rate_flat_curve():

@@ -69,28 +69,6 @@ class IRSPricer:
             pv_fixed += coupon
             prev_date = pmt_date
 
-        # annuity = Σ dcf_float_i * DF_OIS(T_i) — used by OIS par-float branch; IBOR branch discounts per-period instead
-        # Floating leg annuity: Σ dcf_float_i * DF_OIS(t, T_i)
-        annuity = pd.Series(0.0, index=full_index)
-        prev_date = contract.start_date
-        for pmt_date in payment_dates_float:
-            pmt_ts = pd.Timestamp(pmt_date)
-            future_mask = full_index < pmt_ts
-            if not future_mask.any():
-                prev_date = pmt_date
-                continue
-            dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.floating_day_count)
-            tenor_i = pd.Series(
-                [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
-                 for t in full_index],
-                index=full_index,
-            )
-            df_i = swap_utils.ois_discount_factor_series(tenor_i, ois_daily)
-            contrib = pd.Series(0.0, index=full_index)
-            contrib[future_mask] = (dcf * df_i)[future_mask]
-            annuity += contrib
-            prev_date = pmt_date
-
         # DF to start and end of swap (used in OIS par-float branch)
         start_ts = pd.Timestamp(contract.start_date)
         end_ts = pd.Timestamp(contract.end_date)
@@ -116,6 +94,26 @@ class IRSPricer:
         spread_fraction = contract.floating_spread / 10000.0  # bp → fraction
 
         if floating_index.is_ois_based:
+            # Floating leg annuity: Σ dcf_float_i * DF_OIS(t, T_i)
+            annuity = pd.Series(0.0, index=full_index)
+            prev_date = contract.start_date
+            for pmt_date in payment_dates_float:
+                pmt_ts = pd.Timestamp(pmt_date)
+                future_mask = full_index < pmt_ts
+                if not future_mask.any():
+                    prev_date = pmt_date
+                    continue
+                dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.floating_day_count)
+                tenor_i = pd.Series(
+                    [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
+                     for t in full_index],
+                    index=full_index,
+                )
+                df_i = swap_utils.ois_discount_factor_series(tenor_i, ois_daily)
+                contrib = pd.Series(0.0, index=full_index)
+                contrib[future_mask] = (dcf * df_i)[future_mask]
+                annuity += contrib
+                prev_date = pmt_date
             # Par-float (exact when no basis): PV_float = N*(DF_start - DF_end) + N*spread*annuity
             pv_float = contract.notional * (df_start - df_end)
             pv_float += contract.notional * spread_fraction * annuity

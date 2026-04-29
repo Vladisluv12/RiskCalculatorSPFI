@@ -23,6 +23,14 @@ _OFFSET_DAYS: dict[OffsetRule, int] = {
 
 
 def _apply_offset(d: datetime, rule: OffsetRule) -> datetime:
+    """
+    Apply a business-day offset to a date.
+
+    Convention for non-business-day inputs: the date is first rolled to the
+    following Monday (roll='following'), which counts as the first offset step.
+    The remaining (n-1) business days are then added. So Saturday + ONE_DAY = Monday,
+    Saturday + TWO_DAYS = Tuesday.
+    """
     if rule == OffsetRule.NONE:
         return d
     n = _OFFSET_DAYS[rule]
