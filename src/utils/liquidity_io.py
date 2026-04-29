@@ -50,6 +50,8 @@ def load_index(liquidity_dir: str) -> dict[str, str]:
     if not os.path.exists(index_path):
         return {}
     df = pd.read_csv(index_path)
+    if not {"ticker", "filename"}.issubset(df.columns):
+        return {}
     return dict(zip(df["ticker"], df["filename"]))
 
 
@@ -72,7 +74,6 @@ def _needed_ticker_prefixes(instruments: list) -> list[str]:
 def load_for_portfolio(
     liquidity_dir: str,
     instruments: list,
-    calc_end=None,
 ) -> pd.DataFrame:
     """Load only batch files relevant to the current portfolio instruments.
 
