@@ -179,3 +179,51 @@ def test_offset_one_day_from_saturday_gives_monday():
         PaymentTiming.END_OF_PERIOD, OffsetRule.ONE_DAY
     )
     assert result == [datetime(2024, 4, 1)]
+
+
+# --- ibor_forward_rate ---
+
+from unittest.mock import patch
+from compute.pricers.swap_utils import ibor_forward_rate
+
+
+def test_ibor_forward_rate_flat_curve():
+    # Flat 10% ZC: P(0.5) = 1/1.1^0.5, P(1.0) = 1/1.1
+    # L = (P(0.5)/P(1.0) - 1) / 0.5 = (1.1^0.5 - 1) / 0.5
+    dates = pd.date_range("2024-01-01", periods=3, freq="D")
+    tenor_start = pd.Series([0.5, 0.5, 0.5], index=dates)
+    tenor_end   = pd.Series([1.0, 1.0, 1.0], index=dates)
+    dcf = 0.5
+
+    def mock_rfr(currency, tenors, curve):
+        return pd.DataFrame({'rf_rate': [0.10] * len(tenors)}, index=tenors.index)
+
+    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=mock_rfr):
+        result = ibor_forward_rate('EUR', tenor_start, tenor_end, dcf, pd.DataFrame(index=dates))
+
+    p1 = 1.0 / 1.1 ** 0.5
+    p2 = 1.0 / 1.1 ** 1.0
+    expected = (p1 / p2 - 1.0) / dcf
+    assert abs(result.iloc[0] - expected) < 1e-10
+
+
+def test_ibor_forward_rate_upward_curve_exceeds_long_spot():
+    # r(1y)=5%, r(2y)=6% → 1y forward starting in 1y should exceed 6%
+    dates = pd.date_range("2024-01-01", periods=1)
+    tenor_start = pd.Series([1.0], index=dates)
+    tenor_end   = pd.Series([2.0], index=dates)
+    dcf = 1.0
+
+    call_results = [
+        pd.DataFrame({'rf_rate': [0.05]}, index=dates),  # r(1y)
+        pd.DataFrame({'rf_rate': [0.06]}, index=dates),  # r(2y)
+    ]
+    call_iter = iter(call_results)
+
+    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=lambda *a, **kw: next(call_iter)):
+        result = ibor_forward_rate('EUR', tenor_start, tenor_end, dcf, pd.DataFrame(index=dates))
+
+    # P(1y)/P(2y) = (1/1.05) / (1/1.06^2) = 1.06^2 / 1.05
+    expected = (1.06 ** 2 / 1.05 - 1.0) / 1.0
+    assert abs(result.iloc[0] - expected) < 1e-6
+    assert result.iloc[0] > 0.06

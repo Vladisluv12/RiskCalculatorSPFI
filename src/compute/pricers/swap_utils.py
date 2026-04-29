@@ -120,3 +120,21 @@ def ois_discount_factor_series(
     """
     r = get_ois_rate(tenor_series, ois_curve_daily)  # fraction
     return (1.0 / (1.0 + r) ** tenor_series).rename('ois_df')
+
+
+def ibor_forward_rate(
+    currency: str,
+    tenor_start: pd.Series,
+    tenor_end: pd.Series,
+    dcf: float,
+    zc_curve_daily: pd.DataFrame,
+) -> pd.Series:
+    """
+    Simply-compounded IBOR forward rate L(t; T1, T2) implied from ZC curve.
+    L = [P(t,T1)/P(t,T2) - 1] / dcf,  P(t,T) = 1/(1+z(T))^T
+    """
+    r1 = get_risk_free_rate(currency, tenor_start, zc_curve_daily)['rf_rate']
+    r2 = get_risk_free_rate(currency, tenor_end,   zc_curve_daily)['rf_rate']
+    p1 = 1.0 / (1.0 + r1) ** tenor_start
+    p2 = 1.0 / (1.0 + r2) ** tenor_end
+    return (p1 / p2 - 1.0) / max(dcf, 1e-8)

@@ -6,17 +6,6 @@ from instruments.enums import Direction, FloatingIndex
 from utils.DataProvider import DataProvider
 from compute.pricers import swap_utils
 
-# Floating indices that use flat-fixing approximation (current fixing as forward rate).
-# OIS-based indices use par-float instead; exotic indices raise NotImplementedError.
-_FLAT_FIXING_INDICES: frozenset = frozenset({
-    FloatingIndex.EURIBOR_EUR_1M,
-    FloatingIndex.EURIBOR_EUR_3M,
-    FloatingIndex.EURIBOR_EUR_6M,
-    FloatingIndex.RUSFAR_RUB_3M,
-    FloatingIndex.RUSFAR_RUB_ON,
-    FloatingIndex.RUB_KEY_RATE,
-})
-
 
 class IRSPricer:
     def __init__(self, days_in_year: int = 365):
@@ -101,7 +90,7 @@ class IRSPricer:
             annuity += contrib
             prev_date = pmt_date
 
-        # DF to start and end of swap (used in both OIS par-float and flat-fixing branches)
+        # DF to start and end of swap (used in OIS par-float branch)
         start_ts = pd.Timestamp(contract.start_date)
         end_ts = pd.Timestamp(contract.end_date)
 
@@ -129,18 +118,47 @@ class IRSPricer:
             # Par-float (exact when no basis): PV_float = N*(DF_start - DF_end) + N*spread*annuity
             pv_float = contract.notional * (df_start - df_end)
             pv_float += contract.notional * spread_fraction * annuity
-        elif floating_index in _FLAT_FIXING_INDICES:
-            # Flat forward approximation: current fixing used for all future periods
-            fixing_df = dataProvider.get_fixing_data(
-                floating_index, calc_start - ddt, calc_end
-            )  # fixing in % p.a.
-            fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # → fraction
-            pv_float = contract.notional * (fixing_daily + spread_fraction) * annuity
-        else:
+        elif floating_index == FloatingIndex.OIS_FX:
             raise NotImplementedError(
-                f"Floating index {floating_index} is not supported in IRSPricer. "
-                f"Cross-currency or exotic indices require a dedicated pricer."
+                "OIS_FX requires a dedicated FX-basis pricer."
             )
+        else:
+            # ZC-curve-implied IBOR forward rates (EURIBOR, RUSFAR, RUB_KEY_RATE, etc.)
+            float_currency = floating_index.currency
+            zc_data = dataProvider.get_curve_data(float_currency, calc_start - ddt, calc_end)
+            zc_data = zc_data[~zc_data.index.duplicated(keep='last')]
+            zc_daily = zc_data.reindex(full_index).ffill()
+
+            pv_float = pd.Series(0.0, index=full_index)
+            prev_date = contract.start_date
+            for pmt_date in payment_dates_float:
+                pmt_ts = pd.Timestamp(pmt_date)
+                prev_ts = pd.Timestamp(prev_date)
+                future_mask = full_index < pmt_ts
+                if not future_mask.any():
+                    prev_date = pmt_date
+                    continue
+                dcf = swap_utils.year_fraction(prev_date, pmt_date, contract.floating_day_count)
+                tenor_end_i = pd.Series(
+                    [max(1.0 / self.days_in_year, (pmt_ts - t).days / self.days_in_year)
+                     for t in full_index],
+                    index=full_index,
+                )
+                tenor_start_i = pd.Series(
+                    [max(1.0 / self.days_in_year, (prev_ts - t).days / self.days_in_year)
+                     for t in full_index],
+                    index=full_index,
+                )
+                df_ois_end = swap_utils.ois_discount_factor_series(tenor_end_i, ois_daily)
+                fwd = swap_utils.ibor_forward_rate(
+                    float_currency, tenor_start_i, tenor_end_i, dcf, zc_daily
+                )
+                coupon = pd.Series(0.0, index=full_index)
+                coupon[future_mask] = (
+                    contract.notional * (fwd + spread_fraction) * dcf * df_ois_end
+                )[future_mask]
+                pv_float += coupon
+                prev_date = pmt_date
 
         if contract.direction == Direction.BUY:
             npv = pv_float - pv_fixed
