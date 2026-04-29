@@ -9,6 +9,7 @@ import traceback
 import pandas as pd
 import streamlit as st
 
+from instruments.IRSwap import InterestRateSwap
 from utils.liquidity_io import list_liquidity_files, liquidity_dir_path, load_liquidity_csv
 
 
@@ -43,7 +44,6 @@ def render_parametric_inputs(supported: list) -> tuple:
             help="Масштабирующий T-фактор: sqrt((1+T)(1+2T) / (6T)).",
         )
 
-    from instruments.IRSwap import InterestRateSwap
     has_irs = any(isinstance(inst, InterestRateSwap) for inst in supported)
     k_irs = 3.0
     floor_spread_bps = 2.0
