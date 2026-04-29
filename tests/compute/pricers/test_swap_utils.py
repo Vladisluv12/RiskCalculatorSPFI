@@ -225,3 +225,17 @@ def test_ibor_forward_rate_upward_curve_exceeds_long_spot():
     expected = (1.06 ** 2 / 1.05 - 1.0) / 1.0
     assert abs(result.iloc[0] - expected) < 1e-6
     assert result.iloc[0] > 0.06
+
+
+def test_ibor_forward_rate_zero_dcf_raises():
+    dates = pd.date_range("2024-01-01", periods=1)
+    tenor_start = pd.Series([0.5], index=dates)
+    tenor_end   = pd.Series([1.0], index=dates)
+    import pytest
+    
+    def mock_rfr(currency, tenors, curve):
+        return pd.DataFrame({'rf_rate': [0.05] * len(tenors)}, index=tenors.index)
+    
+    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=mock_rfr):
+        with pytest.raises(ValueError, match="dcf must be positive"):
+            ibor_forward_rate('EUR', tenor_start, tenor_end, 0.0, pd.DataFrame(index=dates))
