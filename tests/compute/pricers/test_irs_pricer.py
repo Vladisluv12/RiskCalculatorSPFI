@@ -180,5 +180,5 @@ def test_euribor_atm_swap_near_zero_npv():
     swap = _make_euribor_swap(fixed_rate=0.04)
     dp = _make_eur_mock_dp()
     pricer = IRSPricer(365)
-    result = pricer.calculate_pv(swap, dp, datetime(2025, 1, 1), datetime(2025, 3, 1))
-    assert result['price'].abs().max() < 10000
+    result = pricer.calculate_pv(swap, dp, datetime(2025, 1, 1), datetime(2025, 2, 1))
+    assert result['price'].abs().max() < 5000
