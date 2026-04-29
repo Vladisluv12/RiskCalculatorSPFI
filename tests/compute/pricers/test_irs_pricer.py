@@ -89,17 +89,10 @@ def test_calculate_pv_index_within_range():
     assert result.index.max() <= pd.Timestamp(calc_end)
 
 
-def test_payer_receiver_are_opposite_signs(monkeypatch):
+def test_payer_receiver_are_opposite_signs():
     """BUY (payer) and SELL (receiver) NPVs should sum to ~0."""
-    import compute.pricers.swap_utils as su
 
     RATE = 0.20  # fixed_rate != discount rate -> non-zero NPV
-
-    def mock_df_series(currency, tenor_series, curve_daily):
-        r = pd.Series([0.16] * len(tenor_series), index=tenor_series.index)
-        return (1.0 / (1.0 + r)) ** tenor_series
-
-    monkeypatch.setattr(su, 'discount_factor_series', mock_df_series)
 
     _dates = pd.date_range("2024-06-01", periods=600, freq='D')
     dp = MagicMock()

@@ -5,7 +5,8 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from instruments.enums import DayCountConvention, FloatingIndex, OffsetRule, PaymentTiming
-from compute.modelling.RiskFreeRate import get_risk_free_rate, get_ois_rate
+from instruments.IRSwap import InterestRateSwap
+from compute.modelling.RiskFreeRate import get_ois_rate
 
 
 _TIMING_DELTA = {
@@ -97,15 +98,6 @@ def year_fraction(
         raise ValueError(f'Неизвестная конвенция подсчёта дней: {convention}')
 
 
-def discount_factor_series(
-    currency: str,
-    tenor_series: pd.Series,
-    curve_daily: pd.DataFrame,
-) -> pd.Series:
-    r_df = get_risk_free_rate(currency, tenor_series, curve_daily)
-    r = r_df['rf_rate']
-    return (1.0 / (1.0 + r) ** tenor_series).rename('df')
-
 
 def ois_discount_factor_series(
     tenor_series: pd.Series,
@@ -130,27 +122,6 @@ def ois_discount_factor_series(
     return (1.0 / (1.0 + r) ** tenor_series).rename('ois_df')
 
 
-def ibor_forward_rate(
-    currency: str,
-    tenor_start: pd.Series,
-    tenor_end: pd.Series,
-    dcf: float,
-    zc_curve_daily: pd.DataFrame,
-) -> pd.Series:
-    """
-    Simply-compounded IBOR forward rate L(t; T1, T2) implied from ZC curve.
-    L = [P(t,T1)/P(t,T2) - 1] / dcf,  P(t,T) = 1/(1+z(T))^T
-    where z(T) is the annually-compounded ZC rate from get_risk_free_rate.
-    """
-    r1 = get_risk_free_rate(currency, tenor_start, zc_curve_daily)['rf_rate']
-    r2 = get_risk_free_rate(currency, tenor_end,   zc_curve_daily)['rf_rate']
-    p1 = 1.0 / (1.0 + r1) ** tenor_start
-    p2 = 1.0 / (1.0 + r2) ** tenor_end
-    if dcf <= 0:
-        raise ValueError(f"dcf must be positive; got {dcf!r} — indicates a schedule generation bug")
-    return (p1 / p2 - 1.0) / dcf
-
-
 def ibor_forward_rate_with_basis(
     floating_index: FloatingIndex,
     tenor_start: pd.Series,
@@ -158,14 +129,15 @@ def ibor_forward_rate_with_basis(
     dcf: float,
     ois_daily: pd.DataFrame,
     fixing_daily: pd.Series,
+    basis_window: int = 20,
 ) -> pd.Series:
     """
     IBOR forward rate = OIS forward(T1,T2) + basis,
-    where basis = ibor_fixing - ois_spot_at_ibor_tenor.
+    where basis = rolling mean of (ibor_fixing - ois_spot_at_ibor_tenor).
 
-    Preserves the actual IBOR market level (fixing) while using OIS
-    for the term-structure shape. Better than flat-fixing (ignores term
-    structure) or ZC-proxy (wrong credit level).
+    The rolling mean over `basis_window` days smooths out day-to-day noise
+    in the fixing and gives a more stable estimate of the credit spread
+    without requiring FRA or basis-swap market data.
     """
     if dcf <= 0:
         raise ValueError(f"dcf must be positive; got {dcf!r}")
@@ -180,7 +152,59 @@ def ibor_forward_rate_with_basis(
     tenor_ibor = pd.Series(ibor_tenor_yrs, index=tenor_start.index)
     ois_spot = get_ois_rate(tenor_ibor, ois_daily)  # already fraction
 
-    # basis = current fixing − OIS spot (both fraction)
-    basis = fixing_daily.reindex(tenor_start.index).ffill() - ois_spot
+    # Rolling-mean basis: reduces fixing noise without requiring FRA data.
+    # min_periods=1 avoids NaN at the start of short series.
+    raw_basis = fixing_daily.reindex(tenor_start.index).ffill() - ois_spot
+    basis = raw_basis.rolling(window=basis_window, min_periods=1).mean()
 
     return ois_fwd + basis
+
+
+def irs_dv01(
+    contract: InterestRateSwap,
+    ois_curve_row: pd.Series,
+    calc_date: datetime,
+) -> float:
+    """
+    DV01 = N × Σ_i [dcf_i × DF_OIS(calc_date, T_i)] × 0.0001
+
+    Sums over remaining fixed-leg payment dates only (those strictly after calc_date).
+    Returns 0.0 if no future payments remain.
+
+    Parameters
+    ----------
+    contract      : InterestRateSwap — fixed-leg fields used: start_date, end_date,
+                    fixed_payment_timing, fixed_offset_rule, fixed_day_count, notional.
+    ois_curve_row : pd.Series — one date's OIS curve; index = tenor labels
+                    ('1w','1m',...,'10y'), values = % per annum.
+    calc_date     : valuation date.
+    """
+    calc_ts = pd.Timestamp(calc_date)
+    payment_dates = generate_payment_schedule(
+        contract.start_date, contract.end_date,
+        contract.fixed_payment_timing, contract.fixed_offset_rule,
+    )
+
+    ois_df = pd.DataFrame(
+        [ois_curve_row.values],
+        columns=ois_curve_row.index,
+        index=[calc_ts],
+    )
+
+    days_in_year = 365.0
+    annuity = 0.0
+    prev_date = contract.start_date
+
+    for pmt_date in payment_dates:
+        pmt_ts = pd.Timestamp(pmt_date)
+        if pmt_ts <= calc_ts:
+            prev_date = pmt_date
+            continue
+        dcf = year_fraction(prev_date, pmt_date, contract.fixed_day_count)
+        tenor = max(1.0 / days_in_year, (pmt_ts - calc_ts).days / days_in_year)
+        r = get_ois_rate(pd.Series([tenor], index=[calc_ts]), ois_df)
+        df_i = 1.0 / (1.0 + float(r.iloc[0])) ** tenor
+        annuity += dcf * df_i
+        prev_date = pmt_date
+
+    return float(contract.notional) * annuity * 0.0001

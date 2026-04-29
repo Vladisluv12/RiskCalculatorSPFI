@@ -4,10 +4,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'sr
 import pytest
 import pandas as pd
 from datetime import datetime
-from unittest.mock import patch
 from compute.pricers.swap_utils import (
-    generate_payment_schedule, year_fraction, discount_factor_series,
-    ibor_forward_rate,
+    generate_payment_schedule, year_fraction,
 )
 from instruments.enums import DayCountConvention, FloatingIndex, OffsetRule, PaymentTiming
 
@@ -95,30 +93,6 @@ def test_act_act_spans_two_years():
 
 # --- discount_factor_series ---
 
-def test_discount_factor_series_with_ten_percent(monkeypatch):
-    import compute.pricers.swap_utils as su
-    dates = pd.date_range("2024-01-01", periods=3, freq="D")
-    tenor_series = pd.Series([1.0, 1.0, 1.0], index=dates)
-    mock_r = pd.DataFrame({'rf_rate': [0.10, 0.10, 0.10]}, index=dates)
-    monkeypatch.setattr(su, 'get_risk_free_rate', lambda *a, **kw: mock_r)
-
-    result = su.discount_factor_series('RUB', tenor_series, pd.DataFrame(index=dates))
-
-    expected = 1.0 / (1.10 ** 1.0)
-    assert abs(result.iloc[0] - expected) < 1e-10
-    assert len(result) == 3
-
-
-def test_discount_factor_decreases_with_tenor(monkeypatch):
-    import compute.pricers.swap_utils as su
-    dates = pd.date_range("2024-01-01", periods=2, freq="D")
-    tenor_series = pd.Series([1.0, 2.0], index=dates)
-    mock_r = pd.DataFrame({'rf_rate': [0.10, 0.10]}, index=dates)
-    monkeypatch.setattr(su, 'get_risk_free_rate', lambda *a, **kw: mock_r)
-
-    result = su.discount_factor_series('RUB', tenor_series, pd.DataFrame(index=dates))
-    assert result.iloc[0] > result.iloc[1]
-
 
 # --- offset_rule in generate_payment_schedule ---
 
@@ -192,67 +166,11 @@ def test_offset_two_days_from_saturday_gives_tuesday():
     assert result == [datetime(2024, 4, 2)]
 
 
-# --- ibor_forward_rate ---
-
-def test_ibor_forward_rate_flat_curve():
-    # Flat 10% ZC: P(0.5) = 1/1.1^0.5, P(1.0) = 1/1.1
-    # L = (P(0.5)/P(1.0) - 1) / 0.5 = (1.1^0.5 - 1) / 0.5
-    dates = pd.date_range("2024-01-01", periods=3, freq="D")
-    tenor_start = pd.Series([0.5, 0.5, 0.5], index=dates)
-    tenor_end   = pd.Series([1.0, 1.0, 1.0], index=dates)
-    dcf = 0.5
-
-    def mock_rfr(currency, tenors, curve):
-        return pd.DataFrame({'rf_rate': [0.10] * len(tenors)}, index=tenors.index)
-
-    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=mock_rfr):
-        result = ibor_forward_rate('EUR', tenor_start, tenor_end, dcf, pd.DataFrame(index=dates))
-
-    p1 = 1.0 / 1.1 ** 0.5
-    p2 = 1.0 / 1.1 ** 1.0
-    expected = (p1 / p2 - 1.0) / dcf
-    assert abs(result.iloc[0] - expected) < 1e-10
-
-
-def test_ibor_forward_rate_upward_curve_exceeds_long_spot():
-    # r(1y)=5%, r(2y)=6% → 1y forward starting in 1y should exceed 6%
-    dates = pd.date_range("2024-01-01", periods=1)
-    tenor_start = pd.Series([1.0], index=dates)
-    tenor_end   = pd.Series([2.0], index=dates)
-    dcf = 1.0
-
-    call_results = [
-        pd.DataFrame({'rf_rate': [0.05]}, index=dates),  # r(1y)
-        pd.DataFrame({'rf_rate': [0.06]}, index=dates),  # r(2y)
-    ]
-    call_iter = iter(call_results)
-
-    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=lambda *a, **kw: next(call_iter)):
-        result = ibor_forward_rate('EUR', tenor_start, tenor_end, dcf, pd.DataFrame(index=dates))
-
-    # P(1y)/P(2y) = (1/1.05) / (1/1.06^2) = 1.06^2 / 1.05
-    expected = (1.06 ** 2 / 1.05 - 1.0) / 1.0
-    assert abs(result.iloc[0] - expected) < 1e-6
-    assert result.iloc[0] > 0.06
-
-
-def test_ibor_forward_rate_zero_dcf_raises():
-    dates = pd.date_range("2024-01-01", periods=1)
-    tenor_start = pd.Series([0.5], index=dates)
-    tenor_end   = pd.Series([1.0], index=dates)
-    import pytest
-    
-    def mock_rfr(currency, tenors, curve):
-        return pd.DataFrame({'rf_rate': [0.05] * len(tenors)}, index=tenors.index)
-    
-    with patch('compute.pricers.swap_utils.get_risk_free_rate', side_effect=mock_rfr):
-        with pytest.raises(ValueError, match="dcf must be positive"):
-            ibor_forward_rate('EUR', tenor_start, tenor_end, 0.0, pd.DataFrame(index=dates))
-
-
 # --- ibor_forward_rate_with_basis ---
 
-from compute.pricers.swap_utils import ibor_forward_rate_with_basis
+from compute.pricers.swap_utils import ibor_forward_rate_with_basis, irs_dv01
+from instruments.IRSwap import InterestRateSwap
+from instruments.enums import Currency, Direction
 
 
 def _make_flat_ois_daily(rate_pct: float, n: int = 3) -> pd.DataFrame:
@@ -301,6 +219,38 @@ def test_ibor_forward_with_basis_positive_basis_shifts_all_forwards():
     assert abs(diff - 0.005) < 1e-6  # basis = exactly +0.5%
 
 
+def test_ibor_forward_with_basis_rolling_smooths_spike():
+    # Days 1-3: basis = +0.5%; day 4: basis spikes to +1.5%.
+    # With basis_window=4: rolling mean on day 4 = (0.5+0.5+0.5+1.5)/4 = 0.75%
+    # With basis_window=1: instantaneous basis on day 4 = 1.5%
+    dates = pd.date_range("2024-01-01", periods=4, freq="D")
+    tenor_start = pd.Series([0.25] * 4, index=dates)
+    tenor_end   = pd.Series([0.50] * 4, index=dates)
+    ois_daily = _make_flat_ois_daily(4.0, n=4)
+    # OIS spot for EURIBOR 3M tenor (90/365) at 4% flat → fixing that gives +0.5% basis
+    # We set ois_spot manually via fixing values (fixing = ois_spot + basis).
+    # Since ois is flat 4%, ois_spot ≈ 0.04, so fixing = 0.045 gives basis=0.005
+    fixing_daily = pd.Series([0.045, 0.045, 0.045, 0.055], index=dates)
+
+    result_smoothed = ibor_forward_rate_with_basis(
+        FloatingIndex.EURIBOR_EUR_3M,
+        tenor_start, tenor_end, 0.25, ois_daily, fixing_daily,
+        basis_window=4,
+    )
+    result_instant = ibor_forward_rate_with_basis(
+        FloatingIndex.EURIBOR_EUR_3M,
+        tenor_start, tenor_end, 0.25, ois_daily, fixing_daily,
+        basis_window=1,
+    )
+
+    # Smoothed basis on last day must be less than instantaneous (spike damped)
+    assert result_smoothed.iloc[-1] < result_instant.iloc[-1]
+    # Smoothed value on last day ≈ 3/4 * 0.005 + 1/4 * 0.015 above the zero-basis forward
+    smoothed_basis = (0.005 * 3 + 0.015) / 4
+    instant_basis = 0.015
+    assert abs(result_instant.iloc[-1] - result_smoothed.iloc[-1] - (instant_basis - smoothed_basis)) < 1e-6
+
+
 def test_ibor_forward_with_basis_zero_dcf_raises():
     dates = pd.date_range("2024-01-01", periods=1)
     with pytest.raises(ValueError, match="dcf must be positive"):
@@ -312,3 +262,53 @@ def test_ibor_forward_with_basis_zero_dcf_raises():
             _make_flat_ois_daily(4.0, n=1),
             pd.Series([0.04], index=dates),
         )
+
+
+def _make_irs(start, end, notional=10_000_000.0):
+    return InterestRateSwap(
+        instrument_id='IRS_TEST',
+        notional=notional,
+        direction=Direction.BUY,
+        start_date=start,
+        end_date=end,
+        currency=Currency.RUB,
+        fixed_rate=0.10,
+        fixed_day_count=DayCountConvention.ACT_365,
+        fixed_payment_timing=PaymentTiming.QUARTERLY,
+        fixed_offset_rule=OffsetRule.NONE,
+        floating_index=FloatingIndex.RUONIA_COMP,
+        floating_spread=0.0,
+        floating_day_count=DayCountConvention.ACT_365,
+        floating_payment_timing=PaymentTiming.QUARTERLY,
+        floating_offset_rule=OffsetRule.NONE,
+    )
+
+
+_OIS_ROW = pd.Series({
+    '1w': 7.0, '1m': 7.5, '3m': 8.0, '6m': 8.5,
+    '1y': 9.0, '2y': 9.5, '3y': 10.0, '5y': 10.5, '7y': 11.0, '10y': 11.5,
+})
+
+
+def test_irs_dv01_positive():
+    contract = _make_irs(datetime(2024, 1, 1), datetime(2029, 1, 1))
+    result = irs_dv01(contract, _OIS_ROW, calc_date=datetime(2024, 1, 1))
+    assert result > 0.0
+
+
+def test_irs_dv01_increases_with_tenor():
+    short = irs_dv01(_make_irs(datetime(2024, 1, 1), datetime(2025, 1, 1)), _OIS_ROW, datetime(2024, 1, 1))
+    long_ = irs_dv01(_make_irs(datetime(2024, 1, 1), datetime(2029, 1, 1)), _OIS_ROW, datetime(2024, 1, 1))
+    assert long_ > short
+
+
+def test_irs_dv01_scales_with_notional():
+    small = irs_dv01(_make_irs(datetime(2024, 1, 1), datetime(2029, 1, 1), notional=1_000_000.0), _OIS_ROW, datetime(2024, 1, 1))
+    large = irs_dv01(_make_irs(datetime(2024, 1, 1), datetime(2029, 1, 1), notional=10_000_000.0), _OIS_ROW, datetime(2024, 1, 1))
+    assert large == pytest.approx(10 * small, rel=1e-9)
+
+
+def test_irs_dv01_zero_past_maturity():
+    contract = _make_irs(datetime(2020, 1, 1), datetime(2023, 1, 1))
+    result = irs_dv01(contract, _OIS_ROW, calc_date=datetime(2024, 1, 1))
+    assert result == 0.0
