@@ -1,9 +1,10 @@
 import calendar
 from datetime import datetime
+import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-from instruments.enums import DayCountConvention, PaymentTiming
+from instruments.enums import DayCountConvention, OffsetRule, PaymentTiming
 from compute.modelling.RiskFreeRate import get_risk_free_rate, get_ois_rate
 
 
@@ -15,20 +16,30 @@ _TIMING_DELTA = {
 }
 
 
+def _apply_offset(d: datetime, rule: OffsetRule) -> datetime:
+    if rule == OffsetRule.NONE:
+        return d
+    n = 1 if rule == OffsetRule.ONE_DAY else 2
+    dt64 = np.busday_offset(np.datetime64(d.date(), 'D'), n, roll='following')
+    ts = pd.Timestamp(dt64)
+    return datetime(ts.year, ts.month, ts.day)
+
+
 def generate_payment_schedule(
     start: datetime,
     end: datetime,
     timing: PaymentTiming,
+    offset_rule: OffsetRule = OffsetRule.NONE,
 ) -> list[datetime]:
     if timing == PaymentTiming.END_OF_PERIOD:
-        return [end]
+        return [_apply_offset(end, offset_rule)]
     delta = _TIMING_DELTA[timing]
     dates: list[datetime] = []
     current = start + delta
     while current < end:
-        dates.append(current)
+        dates.append(_apply_offset(current, offset_rule))
         current = current + delta
-    dates.append(end)
+    dates.append(_apply_offset(end, offset_rule))
     return dates
 
 

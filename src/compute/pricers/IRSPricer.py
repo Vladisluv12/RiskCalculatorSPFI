@@ -49,10 +49,14 @@ class IRSPricer:
             return pd.DataFrame(dtype=float)
 
         payment_dates_fixed = swap_utils.generate_payment_schedule(
-            contract.start_date, contract.end_date, contract.fixed_payment_timing
+            contract.start_date, contract.end_date,
+            contract.fixed_payment_timing,
+            contract.fixed_offset_rule,
         )
         payment_dates_float = swap_utils.generate_payment_schedule(
-            contract.start_date, contract.end_date, contract.floating_payment_timing
+            contract.start_date, contract.end_date,
+            contract.floating_payment_timing,
+            contract.floating_offset_rule,
         )
 
         # Fixed leg: PV_fixed = Σ N * r_fixed * dcf_i * DF_OIS(t, T_i)

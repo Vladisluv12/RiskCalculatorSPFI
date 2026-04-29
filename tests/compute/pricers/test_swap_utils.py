@@ -7,7 +7,7 @@ from datetime import datetime
 from compute.pricers.swap_utils import (
     generate_payment_schedule, year_fraction, discount_factor_series
 )
-from instruments.enums import DayCountConvention, PaymentTiming
+from instruments.enums import DayCountConvention, OffsetRule, PaymentTiming
 
 
 # --- generate_payment_schedule ---
@@ -116,3 +116,48 @@ def test_discount_factor_decreases_with_tenor(monkeypatch):
 
     result = su.discount_factor_series('RUB', tenor_series, pd.DataFrame(index=dates))
     assert result.iloc[0] > result.iloc[1]
+
+
+# --- offset_rule in generate_payment_schedule ---
+
+def test_offset_none_leaves_date_unchanged():
+    result = generate_payment_schedule(
+        datetime(2024, 1, 1), datetime(2024, 7, 1),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.NONE
+    )
+    assert result == [datetime(2024, 7, 1)]
+
+
+def test_offset_one_day_advances_by_one_business_day():
+    # 2024-03-28 is Thursday -> +1 BD = Friday 2024-03-29
+    result = generate_payment_schedule(
+        datetime(2023, 9, 28), datetime(2024, 3, 28),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.ONE_DAY
+    )
+    assert result == [datetime(2024, 3, 29)]
+
+
+def test_offset_one_day_skips_weekend():
+    # 2024-03-29 is Friday -> +1 BD = Monday 2024-04-01
+    result = generate_payment_schedule(
+        datetime(2023, 9, 29), datetime(2024, 3, 29),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.ONE_DAY
+    )
+    assert result == [datetime(2024, 4, 1)]
+
+
+def test_offset_two_days_advances_by_two_business_days():
+    # 2024-03-28 is Thursday -> +2 BD = Monday 2024-04-01
+    result = generate_payment_schedule(
+        datetime(2023, 9, 28), datetime(2024, 3, 28),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.TWO_DAYS
+    )
+    assert result == [datetime(2024, 4, 1)]
+
+
+def test_offset_default_is_none_backward_compat():
+    result = generate_payment_schedule(
+        datetime(2024, 1, 1), datetime(2025, 1, 1), PaymentTiming.QUARTERLY
+    )
+    assert len(result) == 4
+    assert result[-1] == datetime(2025, 1, 1)
