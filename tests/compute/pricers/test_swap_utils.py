@@ -4,8 +4,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'sr
 import pytest
 import pandas as pd
 from datetime import datetime
+from unittest.mock import patch
 from compute.pricers.swap_utils import (
-    generate_payment_schedule, year_fraction, discount_factor_series
+    generate_payment_schedule, year_fraction, discount_factor_series,
+    ibor_forward_rate,
 )
 from instruments.enums import DayCountConvention, OffsetRule, PaymentTiming
 
@@ -182,10 +184,6 @@ def test_offset_one_day_from_saturday_gives_monday():
 
 
 # --- ibor_forward_rate ---
-
-from unittest.mock import patch
-from compute.pricers.swap_utils import ibor_forward_rate
-
 
 def test_ibor_forward_rate_flat_curve():
     # Flat 10% ZC: P(0.5) = 1/1.1^0.5, P(1.0) = 1/1.1

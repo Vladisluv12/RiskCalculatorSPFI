@@ -41,7 +41,7 @@ def _make_swap(
 
 
 def _make_mock_dp(rate=0.16):
-    """DataProvider mock returning constant-rate RUB curve (Svensson params)."""
+    """DataProvider mock returning constant-rate RUB curve (Svensson params) and flat OIS."""
     dates = pd.date_range("2024-06-01", periods=600, freq='D')
     dp = MagicMock()
     dp.get_curve_data.return_value = pd.DataFrame(
@@ -51,6 +51,13 @@ def _make_mock_dp(rate=0.16):
          'G8': [0]*600, 'G9': [0]*600},
         index=dates,
     )
+    rate_pct = rate * 100
+    dp.get_ois_curve_data.return_value = pd.DataFrame({
+        '1w': [rate_pct]*600, '1m': [rate_pct]*600, '3m': [rate_pct]*600,
+        '6m': [rate_pct]*600, '1y': [rate_pct]*600, '2y': [rate_pct]*600,
+        '3y': [rate_pct]*600, '5y': [rate_pct]*600, '7y': [rate_pct]*600,
+        '10y': [rate_pct]*600,
+    }, index=dates)
     return dp
 
 
@@ -94,11 +101,19 @@ def test_payer_receiver_are_opposite_signs(monkeypatch):
 
     monkeypatch.setattr(su, 'discount_factor_series', mock_df_series)
 
+    _dates = pd.date_range("2024-06-01", periods=600, freq='D')
     dp = MagicMock()
     dp.get_curve_data.return_value = pd.DataFrame(
         {'dummy': [1.0] * 600},
-        index=pd.date_range("2024-06-01", periods=600, freq='D'),
+        index=_dates,
     )
+    _rate_pct = 16.0
+    dp.get_ois_curve_data.return_value = pd.DataFrame({
+        '1w': [_rate_pct]*600, '1m': [_rate_pct]*600, '3m': [_rate_pct]*600,
+        '6m': [_rate_pct]*600, '1y': [_rate_pct]*600, '2y': [_rate_pct]*600,
+        '3y': [_rate_pct]*600, '5y': [_rate_pct]*600, '7y': [_rate_pct]*600,
+        '10y': [_rate_pct]*600,
+    }, index=_dates)
 
     swap_buy = _make_swap(fixed_rate=RATE, direction=Direction.BUY)
     swap_sell = _make_swap(fixed_rate=RATE, direction=Direction.SELL)
@@ -132,7 +147,7 @@ def _make_euribor_swap(
         direction=Direction.BUY,
         start_date=start,
         end_date=end,
-        currency=Currency.RUB,
+        currency=Currency.EUR,
         fixed_rate=fixed_rate,
         fixed_day_count=DayCountConvention.ACT_365,
         fixed_payment_timing=PaymentTiming.ANNUALLY,

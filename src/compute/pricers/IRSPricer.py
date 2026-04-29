@@ -69,6 +69,7 @@ class IRSPricer:
             pv_fixed += coupon
             prev_date = pmt_date
 
+        # annuity = Σ dcf_float_i * DF_OIS(T_i) — used by OIS par-float branch; IBOR branch discounts per-period instead
         # Floating leg annuity: Σ dcf_float_i * DF_OIS(t, T_i)
         annuity = pd.Series(0.0, index=full_index)
         prev_date = contract.start_date
@@ -144,6 +145,7 @@ class IRSPricer:
                      for t in full_index],
                     index=full_index,
                 )
+                # Clamp to min 1 day: when t >= prev_ts (period already started), approximates forward from near-zero start tenor
                 tenor_start_i = pd.Series(
                     [max(1.0 / self.days_in_year, (prev_ts - t).days / self.days_in_year)
                      for t in full_index],

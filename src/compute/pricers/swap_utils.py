@@ -132,9 +132,12 @@ def ibor_forward_rate(
     """
     Simply-compounded IBOR forward rate L(t; T1, T2) implied from ZC curve.
     L = [P(t,T1)/P(t,T2) - 1] / dcf,  P(t,T) = 1/(1+z(T))^T
+    where z(T) is the annually-compounded ZC rate from get_risk_free_rate.
     """
     r1 = get_risk_free_rate(currency, tenor_start, zc_curve_daily)['rf_rate']
     r2 = get_risk_free_rate(currency, tenor_end,   zc_curve_daily)['rf_rate']
     p1 = 1.0 / (1.0 + r1) ** tenor_start
     p2 = 1.0 / (1.0 + r2) ** tenor_end
-    return (p1 / p2 - 1.0) / max(dcf, 1e-8)
+    if dcf <= 0:
+        raise ValueError(f"dcf must be positive; got {dcf!r} — indicates a schedule generation bug")
+    return (p1 / p2 - 1.0) / dcf
