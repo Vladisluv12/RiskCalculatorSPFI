@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from compute.modelling.liquidity import LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc
+from compute.modelling.liquidity import (
+    LiquidityParams, estimate_ewma_vol, estimate_spread_series, compute_lc,
+    estimate_irs_spread_series, compute_irs_lc,
+)
 from instruments.enums import Direction
 
 
@@ -175,3 +178,61 @@ def test_portfolio_lvar_t5_reduces_lvar():
 
     assert r5['lvar_normal'] < r1['lvar_normal']
     assert r5['t_factor'] == pytest.approx(np.sqrt((1+5)*(1+10)/(6*5)))
+
+
+def test_liquidity_params_irs_defaults():
+    params = LiquidityParams()
+    assert params.k_irs == 3.0
+    assert params.floor_spread_bps == 2.0
+    assert params.observed_spreads_irs == {}
+
+
+def test_compute_irs_lc_normal_formula():
+    spread_series = pd.Series([5.0, 5.0, 6.0, 5.5, 5.0])
+    result = compute_irs_lc(dv01=1000.0, spread_series_bps=spread_series, z_alpha=1.645)
+    assert result['normal'] == pytest.approx(0.5 * 1000.0 * 5.0)
+    assert result['stressed'] >= result['normal']
+
+
+def test_compute_irs_lc_stressed_formula():
+    spread_series = pd.Series([4.0, 5.0, 6.0, 5.0, 5.0])
+    result = compute_irs_lc(dv01=2000.0, spread_series_bps=spread_series, z_alpha=1.645)
+    sigma = float(spread_series.std())
+    expected_stressed = 0.5 * 2000.0 * (5.0 + 1.645 * sigma)
+    assert result['stressed'] == pytest.approx(expected_stressed, rel=1e-6)
+
+
+def test_estimate_irs_spread_series_floor():
+    rate_changes = pd.Series([0.0] * 30)
+    params = LiquidityParams(k_irs=3.0, floor_spread_bps=2.0)
+    result = estimate_irs_spread_series(
+        rate_changes_bps=rate_changes, tenor_years=5.0,
+        direction=Direction.BUY, params=params,
+    )
+    assert (result >= 2.0).all()
+
+
+def test_estimate_irs_spread_series_buy_gt_sell():
+    rng = np.random.default_rng(42)
+    rate_changes = pd.Series(rng.normal(0, 5, 50))
+    params = LiquidityParams(k_irs=3.0, floor_spread_bps=2.0, alpha=0.10)
+    buy = estimate_irs_spread_series(
+        rate_changes_bps=rate_changes, tenor_years=5.0,
+        direction=Direction.BUY, params=params,
+    )
+    sell = estimate_irs_spread_series(
+        rate_changes_bps=rate_changes, tenor_years=5.0,
+        direction=Direction.SELL, params=params,
+    )
+    assert (buy > sell).all()
+
+
+def test_estimate_irs_spread_series_override_scalar():
+    params = LiquidityParams(observed_spreads_irs={'IRS1': 10.0})
+    rate_changes = pd.Series([1.0] * 10)
+    result = estimate_irs_spread_series(
+        rate_changes_bps=rate_changes, tenor_years=5.0,
+        direction=Direction.BUY, params=params,
+        instrument_id='IRS1',
+    )
+    assert (result == 10.0).all()

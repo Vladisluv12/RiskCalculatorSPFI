@@ -12,7 +12,11 @@ class LiquidityParams:
     alpha: float = 0.10                   # асимметрия BUY/SELL
     lambda_: float = 0.94                 # EWMA decay
     avg_daily_volume: dict = field(default_factory=dict)  # {currency_pair: float}
-    observed_spreads: dict = field(default_factory=dict)  # {currency_pair: spread_pct}
+    observed_spreads: dict = field(default_factory=dict)  # {instrument_id: spread_pct}
+    # IRS-specific
+    k_irs: float = 3.0                    # калибровочный коэффициент для IRS
+    floor_spread_bps: float = 2.0         # минимальный спред для IRS, б.п.
+    observed_spreads_irs: dict = field(default_factory=dict)  # {instrument_id: spread_bps}
 
 
 def estimate_ewma_vol(fx_returns: pd.Series, lambda_: float = 0.94) -> pd.Series:
@@ -75,4 +79,58 @@ def compute_lc(
     abs_pv = abs(mid_pv)
     lc_normal = 0.5 * abs_pv * s_last
     lc_stressed = 0.5 * abs_pv * (s_last + z_alpha * sigma_spread)
+    return {'normal': lc_normal, 'stressed': lc_stressed}
+
+
+
+def estimate_irs_spread_series(
+    rate_changes_bps: pd.Series,
+    tenor_years: float,
+    direction: Direction,
+    params: LiquidityParams,
+    instrument_id: str = "",
+) -> pd.Series:
+    """
+    Series of bid-ask spread in basis points for an IRS.
+
+    spread_bps(t) = max(k_irs × σ_rate_bps(t) × √tenor_years, floor_spread_bps)
+    dir_adj        = (1 + α) if BUY, (1 − α) if SELL
+
+    If instrument_id is in params.observed_spreads_irs, that value is returned
+    directly (scalar float or pd.Series), bypassing the vol model.
+    """
+    if instrument_id in params.observed_spreads_irs:
+        val = params.observed_spreads_irs[instrument_id]
+        if isinstance(val, pd.Series):
+            combined = (
+                val.reindex(val.index.union(rate_changes_bps.index))
+                .sort_index().ffill().bfill()
+            )
+            return combined.reindex(rate_changes_bps.index).fillna(params.floor_spread_bps)
+        return pd.Series(float(val), index=rate_changes_bps.index)
+
+    sigma_bps = estimate_ewma_vol(rate_changes_bps, params.lambda_)
+    base_spread = np.maximum(
+        params.k_irs * sigma_bps * np.sqrt(max(tenor_years, 1.0 / 365)),
+        params.floor_spread_bps,
+    )
+    dir_adj = (1.0 + params.alpha) if direction == Direction.BUY else (1.0 - params.alpha)
+    return base_spread * dir_adj
+
+
+def compute_irs_lc(
+    dv01: float,
+    spread_series_bps: pd.Series,
+    z_alpha: float,
+) -> dict:
+    """
+    LC_normal   = 0.5 × dv01 × spread_bps_last
+    LC_stressed = 0.5 × dv01 × (spread_bps_last + z_alpha × σ_spread_bps)
+
+    Returns {'normal': float, 'stressed': float}.
+    """
+    s_last = float(spread_series_bps.iloc[-1])
+    sigma_spread = float(spread_series_bps.std()) if len(spread_series_bps) > 1 else 0.0
+    lc_normal = 0.5 * dv01 * s_last
+    lc_stressed = 0.5 * dv01 * (s_last + z_alpha * sigma_spread)
     return {'normal': lc_normal, 'stressed': lc_stressed}
