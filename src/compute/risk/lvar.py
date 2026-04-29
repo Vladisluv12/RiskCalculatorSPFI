@@ -4,7 +4,11 @@ from scipy.stats import norm
 from datetime import datetime
 from compute.risk.var import _get_pv_series
 from utils.DataProvider import DataProvider
-from compute.modelling.liquidity import LiquidityParams, estimate_spread_series, compute_lc
+from compute.modelling.liquidity import (
+    LiquidityParams, estimate_spread_series, compute_lc,
+    estimate_irs_spread_series, compute_irs_lc,
+)
+from compute.pricers.swap_utils import irs_dv01
 from instruments.IRSwap import InterestRateSwap
 
 
@@ -38,7 +42,6 @@ def portfolio_lvar(
     pv_series_list: list = []  # для расчёта абсолютного портфельного VaR
 
     for inst in instruments:
-        # IRS: FX-based liquidity cost model не применим — LC = 0, только VaR
         if isinstance(inst, InterestRateSwap):
             try:
                 pv_series = _get_pv_series(dataProvider, inst, calc_start, calc_end, window)
@@ -46,7 +49,45 @@ def portfolio_lvar(
                 pv_series_list.append(pv_series)
             except Exception:
                 mid_pv = 0.0
-            instrument_lc[inst.instrument_id] = {'normal': 0.0, 'stressed': 0.0, 's_pct': 0.0, 'abs_pv': abs(mid_pv)}
+
+            currency = inst.currency.value
+            try:
+                ois_data = dataProvider.get_ois_curve_data(currency, calc_start, calc_end)
+                ois_row = ois_data[ois_data.index <= pd.Timestamp(calc_end)].iloc[-1]
+                dv01 = irs_dv01(inst, ois_row, calc_end)
+            except Exception:
+                instrument_lc[inst.instrument_id] = {
+                    'normal': 0.0, 'stressed': 0.0, 's_bps': 0.0, 'abs_pv': abs(mid_pv),
+                }
+                continue
+
+            try:
+                fixing_df = dataProvider.get_fixing_data(inst.floating_index, calc_start, calc_end)
+                rate_changes_bps = fixing_df['fixing'].diff().dropna().tail(window) * 10_000
+            except Exception:
+                rate_changes_bps = pd.Series(dtype=float)
+
+            if rate_changes_bps.empty:
+                instrument_lc[inst.instrument_id] = {
+                    'normal': 0.0, 'stressed': 0.0, 's_bps': 0.0, 'abs_pv': abs(mid_pv),
+                }
+                continue
+
+            calc_end_ts = pd.Timestamp(calc_end)
+            tenor_years = max(1.0 / 365, (pd.Timestamp(inst.end_date) - calc_end_ts).days / 365)
+
+            spread_series_bps = estimate_irs_spread_series(
+                rate_changes_bps=rate_changes_bps,
+                tenor_years=tenor_years,
+                direction=inst.direction,
+                params=params,
+                instrument_id=inst.instrument_id,
+            )
+
+            lc = compute_irs_lc(dv01=dv01, spread_series_bps=spread_series_bps, z_alpha=z_alpha)
+            lc['s_bps'] = float(spread_series_bps.iloc[-1])
+            lc['abs_pv'] = abs(mid_pv)
+            instrument_lc[inst.instrument_id] = lc
             continue
 
         pair_ticker = inst.currency_pair.value.replace('/', '')  # 'USDRUB'

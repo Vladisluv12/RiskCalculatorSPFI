@@ -236,3 +236,108 @@ def test_estimate_irs_spread_series_override_scalar():
         instrument_id='IRS1',
     )
     assert (result == 10.0).all()
+
+
+from instruments.IRSwap import InterestRateSwap
+from instruments.enums import (
+    Currency, DayCountConvention, FloatingIndex, OffsetRule, PaymentTiming,
+)
+
+
+def _make_irs_instrument(iid='IRS1'):
+    return InterestRateSwap(
+        instrument_id=iid,
+        notional=100_000_000.0,
+        direction=Direction.BUY,
+        start_date=datetime(2023, 1, 1),
+        end_date=datetime(2028, 1, 1),
+        currency=Currency.RUB,
+        fixed_rate=0.10,
+        fixed_day_count=DayCountConvention.ACT_365,
+        fixed_payment_timing=PaymentTiming.QUARTERLY,
+        fixed_offset_rule=OffsetRule.NONE,
+        floating_index=FloatingIndex.RUONIA_COMP,
+        floating_spread=0.0,
+        floating_day_count=DayCountConvention.ACT_365,
+        floating_payment_timing=PaymentTiming.QUARTERLY,
+        floating_offset_rule=OffsetRule.NONE,
+    )
+
+
+def test_portfolio_lvar_irs_lc_nonzero():
+    """IRS должен давать LC > 0 при наличии ставочной волатильности."""
+    rng = np.random.default_rng(7)
+    n = 252
+    dates = pd.date_range('2023-01-01', periods=n, freq='B')
+
+    mock_pv = pd.Series(rng.normal(500_000, 50_000, n), index=dates, name='price')
+
+    ois_row_values = {
+        '1w': 7.0, '1m': 7.5, '3m': 8.0, '6m': 8.5,
+        '1y': 9.0, '2y': 9.5, '3y': 10.0, '5y': 10.5, '7y': 11.0, '10y': 11.5,
+    }
+    ois_df = pd.DataFrame([ois_row_values], index=[dates[-1]])
+
+    fixing_values = rng.normal(0.165, 0.001, n)
+    fixing_df = pd.DataFrame({'fixing': fixing_values}, index=dates)
+
+    mock_dp = MagicMock()
+    mock_dp.get_ois_curve_data.return_value = ois_df
+    mock_dp.get_fixing_data.return_value = fixing_df
+
+    params = LiquidityParams(k_irs=3.0, floor_spread_bps=2.0, alpha=0.10, lambda_=0.94)
+
+    with patch('compute.risk.lvar._get_pv_series', return_value=mock_pv):
+        result = portfolio_lvar(
+            instruments=[_make_irs_instrument()],
+            dataProvider=mock_dp,
+            calc_start=datetime(2023, 1, 1),
+            calc_end=datetime(2023, 12, 29),
+            params=params,
+            T=1,
+            confidence_level=0.95,
+            window=252,
+        )
+
+    lc = result['instrument_lc']['IRS1']
+    assert lc['normal'] > 0.0
+    assert lc['stressed'] >= lc['normal']
+    assert 's_bps' in lc
+
+
+def test_portfolio_lvar_irs_lc_override():
+    """observed_spreads_irs override должен подставлять заданный спред."""
+    rng = np.random.default_rng(9)
+    n = 50
+    dates = pd.date_range('2023-01-01', periods=n, freq='B')
+    mock_pv = pd.Series(rng.normal(500_000, 10_000, n), index=dates, name='price')
+
+    ois_row_values = {
+        '1w': 7.0, '1m': 7.5, '3m': 8.0, '6m': 8.5,
+        '1y': 9.0, '2y': 9.5, '3y': 10.0, '5y': 10.5, '7y': 11.0, '10y': 11.5,
+    }
+    ois_df = pd.DataFrame([ois_row_values], index=[dates[-1]])
+    fixing_df = pd.DataFrame({'fixing': [7.5] * n}, index=dates)
+
+    mock_dp = MagicMock()
+    mock_dp.get_ois_curve_data.return_value = ois_df
+    mock_dp.get_fixing_data.return_value = fixing_df
+
+    params = LiquidityParams(
+        k_irs=3.0, floor_spread_bps=2.0,
+        observed_spreads_irs={'IRS1': 8.0},
+    )
+
+    with patch('compute.risk.lvar._get_pv_series', return_value=mock_pv):
+        result = portfolio_lvar(
+            instruments=[_make_irs_instrument()],
+            dataProvider=mock_dp,
+            calc_start=datetime(2023, 1, 1),
+            calc_end=datetime(2023, 3, 17),
+            params=params,
+            T=1,
+            confidence_level=0.95,
+            window=50,
+        )
+
+    assert result['instrument_lc']['IRS1']['s_bps'] == pytest.approx(8.0)
