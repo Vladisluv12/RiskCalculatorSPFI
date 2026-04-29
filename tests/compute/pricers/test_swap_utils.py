@@ -161,3 +161,21 @@ def test_offset_default_is_none_backward_compat():
     )
     assert len(result) == 4
     assert result[-1] == datetime(2025, 1, 1)
+
+
+def test_offset_none_leaves_weekend_date_unchanged():
+    # 2024-03-30 is Saturday — NONE must not adjust it
+    result = generate_payment_schedule(
+        datetime(2023, 9, 30), datetime(2024, 3, 30),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.NONE
+    )
+    assert result == [datetime(2024, 3, 30)]
+
+
+def test_offset_one_day_from_saturday_gives_monday():
+    # 2024-03-30 is Saturday → +1 BD from Saturday = Monday 2024-04-01
+    result = generate_payment_schedule(
+        datetime(2023, 9, 30), datetime(2024, 3, 30),
+        PaymentTiming.END_OF_PERIOD, OffsetRule.ONE_DAY
+    )
+    assert result == [datetime(2024, 4, 1)]

@@ -16,12 +16,24 @@ _TIMING_DELTA = {
 }
 
 
+_OFFSET_DAYS: dict[OffsetRule, int] = {
+    OffsetRule.ONE_DAY: 1,
+    OffsetRule.TWO_DAYS: 2,
+}
+
+
 def _apply_offset(d: datetime, rule: OffsetRule) -> datetime:
     if rule == OffsetRule.NONE:
         return d
-    n = 1 if rule == OffsetRule.ONE_DAY else 2
-    dt64 = np.busday_offset(np.datetime64(d.date(), 'D'), n, roll='following')
-    ts = pd.Timestamp(dt64)
+    n = _OFFSET_DAYS[rule]
+    dt64 = np.datetime64(d.date(), 'D')
+    if np.is_busday(dt64):
+        bd = np.busday_offset(dt64, n)
+    else:
+        bd = np.busday_offset(dt64, 0, roll='following')
+        if n > 1:
+            bd = np.busday_offset(bd, n - 1)
+    ts = pd.Timestamp(bd)
     return datetime(ts.year, ts.month, ts.day)
 
 
