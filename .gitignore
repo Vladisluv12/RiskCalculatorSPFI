@@ -10,4 +10,4 @@ docs/
 data/
 
 .mcp.json
-try_get.py
+try_get.py.worktrees/
