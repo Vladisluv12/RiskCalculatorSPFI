@@ -17,7 +17,7 @@ if 'data_provider' not in st.session_state:
     st.session_state.data_provider = DataProvider(input_dir=st.session_state.data_dir)
 
 # Для отключения тестовой инициализации закомментируйте следующую строку.
-bootstrap_test_data(st.session_state)
+# bootstrap_test_data(st.session_state)
 
 ensure_liquidity_file(st.session_state.data_dir)
 

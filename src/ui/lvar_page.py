@@ -96,14 +96,16 @@ _params_key = (
     tuple(inst.instrument_id for inst in supported),
 )
 
+_stale_warning = st.empty()
 if (
     "lvar_results" in st.session_state
     and st.session_state["lvar_results"].get("_params_key") != _params_key
 ):
-    st.warning("Параметры изменились — результаты устарели. Нажмите «Рассчитать LVaR» для обновления.")
+    _stale_warning.warning("Параметры изменились — результаты устарели. Нажмите «Рассчитать LVaR» для обновления.")
 
 # Расчёт
 if st.button("Рассчитать LVaR"):
+    _stale_warning.empty()
     try:
         with st.spinner("Расчёт VaR портфеля..."):
             if type_of_var == "Исторический":

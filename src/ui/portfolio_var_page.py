@@ -220,7 +220,7 @@ st.subheader("VaR портфеля")
 if r["type_of_var"] == "Исторический":
     st.latex(r"VaR_P^{\text{диверс.}} = \sqrt{\vec{VaR}^{\,T} \cdot R \cdot \vec{VaR}}")
 else:
-    st.latex(r"VaR_P = Z_c \times \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2w_1w_2\sigma_1\sigma_2\rho_{1,2}}")
+    st.latex(r"VaR_P = \sqrt{\vec{VaR}^{\,T} \cdot R \cdot \vec{VaR}}")
 
 n = corr_matrix.shape[0]
 mask = ~np.eye(n, dtype=bool)
@@ -241,7 +241,7 @@ _VAR_HELPS = {
 recommended_var_display = {"diversified": diversified_var, "undiversified": undiversified_var, "uncorrelated": uncorrelated_var}[recommended]
 st.metric(_VAR_LABELS[recommended], f"{recommended_var_display:.4f}", help=_VAR_HELPS[recommended])
 st.caption(
-    f"Средняя |ρ̄| = **{avg_abs_corr:.3f}**, "
+    f"Средняя |ρ| = **{avg_abs_corr:.3f}**, "
     f"используем **{_VAR_LABELS[recommended]}**"
 )
 
