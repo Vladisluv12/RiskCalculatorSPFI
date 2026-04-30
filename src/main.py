@@ -1,8 +1,5 @@
-import os as _os
 import streamlit as st
 from datetime import date
-
-_SRC_DIR = _os.path.dirname(_os.path.abspath(__file__))
 
 from utils.DataProvider import DataProvider
 from iolib.report_builder import ReportBuilder
@@ -13,7 +10,7 @@ from utils.generate_liquidity import ensure_liquidity_file
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = []
 if 'data_dir' not in st.session_state:
-    st.session_state.data_dir = _os.path.join(_SRC_DIR, "data")
+    st.session_state.data_dir = "src/data"
 if 'valuation_date' not in st.session_state:
     st.session_state.valuation_date = date.today()
 if 'data_provider' not in st.session_state:
