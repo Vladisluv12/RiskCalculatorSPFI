@@ -21,7 +21,8 @@ class IRSPricer:
         if contract.start_date >= contract.end_date:
             return pd.DataFrame(dtype=float)
 
-        ddt = timedelta(days=5)
+        basis_window = 20  # rolling-basis lookback in calendar days
+        ddt = timedelta(days=basis_window + 5)  # extra margin for weekends/holidays
         currency = contract.currency.value
 
         # Load OIS discount curve
@@ -120,7 +121,7 @@ class IRSPricer:
         else:
             # OIS-forward + basis: forward(T1,T2) = ois_fwd(T1,T2) + (ibor_fixing - ois_spot)
             fixing_df = dataProvider.get_fixing_data(floating_index, calc_start - ddt, calc_end)
-            fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # % → fraction
+            fixing_daily = fixing_df['fixing'].reindex(full_index).ffill() / 100.0  # % - fraction
 
             pv_float = pd.Series(0.0, index=full_index)
             prev_date = contract.start_date
@@ -145,7 +146,8 @@ class IRSPricer:
                 )
                 df_ois_end = swap_utils.ois_discount_factor_series(tenor_end_i, ois_daily)
                 fwd = swap_utils.ibor_forward_rate_with_basis(
-                    floating_index, tenor_start_i, tenor_end_i, dcf, ois_daily, fixing_daily
+                    floating_index, tenor_start_i, tenor_end_i, dcf, ois_daily, fixing_daily,
+                    basis_window=basis_window,
                 )
                 coupon = pd.Series(0.0, index=full_index)
                 coupon[future_mask] = (

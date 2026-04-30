@@ -99,7 +99,7 @@ def render_csv_inputs(supported: list) -> int:
     if not os.path.exists(index_path):
         st.warning(
             f"Файл index.csv не найден в {liq_dir}. "
-            "Запустите `python utils/split_liquidity.py` для генерации батч-файлов."
+            "Запустите `python utils/split_liquidity.py` для генерации файлов."
         )
         st.session_state.pop("lvar_liquidity_df", None)
         return int(T)
@@ -107,7 +107,7 @@ def render_csv_inputs(supported: list) -> int:
     try:
         liq_df = load_for_portfolio(liq_dir, supported)
         if liq_df.empty:
-            st.info("Ни один батч-файл не содержит котировок для инструментов портфеля.")
+            st.info("Ни один файл не содержит котировок для инструментов портфеля.")
             st.session_state.pop("lvar_liquidity_df", None)
         else:
             st.session_state["lvar_liquidity_df"] = liq_df

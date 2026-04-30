@@ -12,7 +12,6 @@ _FIXING_FILENAMES: dict[FloatingIndex, str] = {
     FloatingIndex.RUONIA_COMP:     "RUONIA Comp..csv",
     FloatingIndex.ESTR_COMP:       "ESTR_Comp.csv",
     FloatingIndex.SOFR_COMP:       "SOFR_Comp.csv",
-    FloatingIndex.OIS_FX:          "OIS FX.csv",
     FloatingIndex.EURIBOR_EUR_1M:  "Euribor_EUR_1m.csv",
     FloatingIndex.EURIBOR_EUR_3M:  "Euribor_EUR_3m.csv",
     FloatingIndex.EURIBOR_EUR_6M:  "Euribor_EUR_6m.csv",
@@ -22,25 +21,18 @@ _FIXING_FILENAMES: dict[FloatingIndex, str] = {
     FloatingIndex.RUB_KEY_RATE:    "RUB KeyRate.csv",
 }
 
-# Indices whose CSV files store rates as decimals (e.g. 0.05 = 5%).
-# get_fixing_data multiplies these by 100 so all fixings return in % per annum.
-_FIXING_STORED_AS_FRACTION: set[FloatingIndex] = {
-    FloatingIndex.RUONIA_AVG,
-    FloatingIndex.RUONIA_COMP,
-    FloatingIndex.ESTR_COMP,
-    FloatingIndex.SOFR_COMP,
-    FloatingIndex.OIS_FX,
-    FloatingIndex.RUSFAR_RUB_ON,
-    FloatingIndex.RUSFAR_RUB_3M,
-    FloatingIndex.RUSFARCNY_COMP,
-    FloatingIndex.RUB_KEY_RATE,
-}
-
 _OIS_FILENAMES: dict[str, str] = {
     'RUB': 'rub_ois.csv',
     'EUR': 'eur_ois.csv',
     'USD': 'usd_ois.csv',
     'CNY': 'cny_ois.csv',
+}
+
+_CURVE_FILENAMES : dict[str, str] = {
+    'RUB': 'rub_zcyc_params.csv',
+    'EUR': 'ecb_zcyc_params.csv',
+    'USD': 'usd_zcyc.csv',
+    'CNY': 'cny_zcyc.csv',
 }
 
 class DataProvider:
@@ -57,17 +49,17 @@ class DataProvider:
             raise FileNotFoundError(f"Директория {self.filepath} не найдена.")
 
     def _get_curve_filename(self, currency: str) -> str:
-        if currency.upper() == 'USD':
-            return "usd_zcyc"
-        elif currency.upper() == 'RUB':
-            return "rub_zcyc_params"
-        elif currency.upper() == 'EUR':
-            return "ecb_zcyc_params"
-        elif currency.upper() == 'CNY':
-            return "cny_zcyc"
-        else:
-            raise ValueError(f"Валюта {currency} не поддерживается.")
-        
+        filename =  _CURVE_FILENAMES.get(currency.upper())
+        if filename is None:
+            raise ValueError(f"Файл кривой для {currency} не найден.")
+        return filename
+    
+    def _get_fixing_filename(self, index: FloatingIndex) -> str:
+        filename = _FIXING_FILENAMES.get(index)
+        if filename is None:
+            raise ValueError(f"Файл фиксингов для {index.value} не найден.")
+        return filename
+    
     def _process_currrency_data(self, filepath: str) -> pd.DataFrame:
         df = pd.read_csv(filepath, index_col="data", sep=';')
         df.index = pd.to_datetime(df.index, format='%d.%m.%Y')
@@ -76,7 +68,10 @@ class DataProvider:
         df.drop(['nominal', 'cdx'], axis=1, inplace=True)
         df = df.rename(columns={'data': 'date'})
         return df
-
+    
+    def _process_dataframe(self, df: pd.DataFrame, start: datetime, end: datetime) -> pd.DataFrame:
+        mask = (df.index >= start) & (df.index <= end)
+        return df.loc[mask]
 
     def get_currency_data(self, ticker: str, first_date: datetime, last_date: datetime) -> pd.DataFrame:
         """
@@ -88,10 +83,7 @@ class DataProvider:
             raise FileNotFoundError(f"Файл для валюты {ticker} не найден.")
 
         df = self._process_currrency_data(filepath)
-        start = first_date
-        end = last_date
-        mask = (df.index >= start) & (df.index <= end)
-        return df.loc[mask]
+        return self._process_dataframe(df, first_date, last_date)
 
     def list_liquidity_files(self) -> list[str]:
         return list_liquidity_files(self.filepath)
@@ -112,10 +104,7 @@ class DataProvider:
         df = pd.read_csv(filepath, index_col='date')
         df.index = pd.to_datetime(df.index)
 
-        start = first_date
-        end = last_date
-        mask = (df.index >= start) & (df.index <= end)
-        return df.loc[mask]
+        return self._process_dataframe(df, first_date, last_date)
 
     def get_ois_curve_data(
         self,
@@ -141,8 +130,7 @@ class DataProvider:
         df = pd.read_csv(filepath, index_col='date')
         df.index = pd.to_datetime(df.index)
         ddt = pd.Timedelta(days=5)
-        mask = (df.index >= pd.Timestamp(first_date) - ddt) & (df.index <= pd.Timestamp(last_date))
-        return df.loc[mask]
+        return self._process_dataframe(df, pd.Timestamp(first_date) - ddt, pd.Timestamp(last_date))
 
     def get_fixing_data(
         self,
@@ -153,7 +141,7 @@ class DataProvider:
         """
         Загружает исторические фиксинги для указанного плавающего индекса.
         """
-        filename = _FIXING_FILENAMES[index]
+        filename = self._get_fixing_filename(index)
         filepath = os.path.join(self.filepath, 'fixings', filename)
         if not os.path.exists(filepath):
             raise FileNotFoundError(f'Файл фиксингов для {index.value} не найден.')
@@ -162,8 +150,4 @@ class DataProvider:
         df = df.rename(columns={df.columns[0]: 'date', df.columns[1]: 'fixing'})
         df['date'] = pd.to_datetime(df['date'], format='%d.%m.%Y')
         df = df.set_index('date').sort_index()
-        mask = (df.index >= pd.Timestamp(first_date)) & (df.index <= pd.Timestamp(last_date))
-        result = df.loc[mask].copy()
-        if index in _FIXING_STORED_AS_FRACTION:
-            result['fixing'] = result['fixing'] * 100
-        return result
+        return self._process_dataframe(df, first_date, last_date)
