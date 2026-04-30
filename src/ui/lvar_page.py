@@ -10,12 +10,13 @@ from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
-from ui.lvar_common.lvar_inputs import render_parametric_inputs, render_csv_inputs
+from ui.lvar_common.liquidity_model import MODELS, MODELS_BY_LABEL, ParametricLiquidityModel
 from ui.lvar_common.lvar_results import build_liquidity_params, build_lc_dataframe, render_lvar_results, render_export_section
 from ui.lvar_common.lvar_spreads import liquidity_spreads_key
 
-_PARAMETRIC = "Параметрическая модель"
-_CSV = "CSV-файл со спредами"
+_CSV_LABEL = next(
+    m.label for m in MODELS if not isinstance(m, ParametricLiquidityModel)
+)
 
 render_report_sidebar()
 st.title("💧 LVaR (Liquidity-adjusted VaR)")
@@ -56,36 +57,19 @@ st.divider()
 # Источник данных по ликвидности
 liquidity_source = st.radio(
     "Источник данных по ликвидности",
-    [_PARAMETRIC, _CSV],
+    [m.label for m in MODELS],
     horizontal=True,
     key="lvar_liquidity_source",
 )
+model = MODELS_BY_LABEL[liquidity_source]
 
-with st.expander("Описание используемой модели ликвидности"):
-    st.markdown(
-        r"""
-Cпред bid/ask моделируется как случайная величина, зависящая от волатильности курса.
-Liquidity cost отражает стоимость закрытия позиции через рынок.
-
----
-
-**EWMA-волатильность**: $\sigma^2(t) = \lambda \sigma^2(t-1) + (1-\lambda) r^2(t)$
-
-**Спред**: $s\%(t) = \max(k \cdot \sigma_\text{ewma}(t) \cdot \sqrt{\text{tenor}},\; s_\text{floor})$
-
-**Liquidity cost**: $LC = \tfrac{1}{2}|PV| \cdot s\%$, $\quad LC_\text{stressed} = \tfrac{1}{2}|PV|(s\% + z_\alpha \sigma_{s\%})$
-
-**LVaR**: $LVaR_T = \dfrac{VaR + LC}{\sqrt{(1+T)(1+2T)/6T}}$
-        """
-    )
+# Описание модели — только для параметрической (CSV-режим описывает себя в результатах)
+if isinstance(model, ParametricLiquidityModel):
+    with st.expander("Описание используемой модели ликвидности"):
+        model.render_description()
 
 # Параметры ликвидности
-if liquidity_source == _PARAMETRIC:
-    k, floor_spread, alpha, lambda_, T, avg_daily_volume, k_irs, floor_spread_bps = render_parametric_inputs(supported)
-else:
-    k, floor_spread, alpha, lambda_, avg_daily_volume = 3.0, 0.001, 0.10, 0.94, {}
-    k_irs, floor_spread_bps = 3.0, 2.0
-    T = render_csv_inputs(supported)
+p = model.render_inputs(supported)
 
 st.divider()
 
@@ -105,10 +89,10 @@ lvar_instruments = [replace(inst, start_date=calc_start) for inst in supported]
 _params_key = (
     type_of_var, conf_level, int(horizon), window,
     liquidity_source,
-    float(k), float(floor_spread), float(alpha), float(lambda_), int(T),
-    float(k_irs), float(floor_spread_bps),
-    tuple(sorted(avg_daily_volume.items())),
-    liquidity_spreads_key(liquidity_source, _CSV),
+    float(p.k), float(p.floor_spread), float(p.alpha), float(p.lambda_), int(p.T),
+    float(p.k_irs), float(p.floor_spread_bps),
+    tuple(sorted(p.avg_daily_volume.items())),
+    liquidity_spreads_key(liquidity_source, _CSV_LABEL),
     tuple(inst.instrument_id for inst in supported),
 )
 
@@ -143,9 +127,9 @@ if st.button("Рассчитать LVaR"):
         )
 
         params = build_liquidity_params(
-            liquidity_source, _CSV, lvar_instruments, calc_end,
-            k, floor_spread, alpha, lambda_, avg_daily_volume,
-            k_irs=k_irs, floor_spread_bps=floor_spread_bps,
+            liquidity_source, _CSV_LABEL, lvar_instruments, calc_end,
+            p.k, p.floor_spread, p.alpha, p.lambda_, p.avg_daily_volume,
+            k_irs=p.k_irs, floor_spread_bps=p.floor_spread_bps,
         )
 
         with st.spinner("Расчёт LVaR..."):
@@ -155,7 +139,7 @@ if st.button("Рассчитать LVaR"):
                 calc_start=calc_start,
                 calc_end=calc_end,
                 params=params,
-                T=int(T),
+                T=int(p.T),
                 confidence_level=conf_level,
                 window=window,
             )
@@ -176,7 +160,8 @@ if st.button("Рассчитать LVaR"):
             "conf_level": conf_level,
             "horizon": horizon,
             "window": window,
-            "T": T,
+            "liquidity_source": liquidity_source,
+            "T": p.T,
         }
 
     except Exception as exc:

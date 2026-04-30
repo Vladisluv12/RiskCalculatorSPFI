@@ -1,7 +1,5 @@
-"""
-Parameter input widgets for the LVaR page.
-Each function renders one configuration section and returns the collected values.
-"""
+# Functionality moved to ui.lvar_common.liquidity_model (Strategy pattern).
+# Kept for backward compatibility.
 
 import os
 import re

@@ -7,7 +7,7 @@ import streamlit as st
 
 from compute.modelling.liquidity import LiquidityParams
 from ui.common.components import render_export_download, render_report_toggle
-from ui.lvar_common.lvar_spreads import build_observed_spreads
+from ui.lvar_common.lvar_spreads import build_observed_spreads, build_observed_spreads_irs
 
 
 def build_liquidity_params(
@@ -31,6 +31,7 @@ def build_liquidity_params(
             st.stop()
         return LiquidityParams(
             observed_spreads=build_observed_spreads(liquidity_df, lvar_instruments, calc_end),
+            observed_spreads_irs=build_observed_spreads_irs(liquidity_df, lvar_instruments, calc_end),
             avg_daily_volume={},
             k_irs=k_irs,
             floor_spread_bps=floor_spread_bps,
@@ -64,10 +65,14 @@ def build_lc_dataframe(supported: list, instrument_lc: dict) -> pd.DataFrame:
 
 def render_lvar_results(res: dict) -> None:
     """Render formulas, LC table, and summary metrics."""
+    from ui.lvar_common.liquidity_model import MODELS_BY_LABEL
+    model = MODELS_BY_LABEL.get(res.get("liquidity_source", ""))
     st.subheader("Формулы")
-    st.latex(r"LC^{normal} = \frac{1}{2}\,|PV|\,\cdot\,s\%")
-    st.latex(r"LC^{stressed} = \frac{1}{2}\,|PV|\,\cdot\,(s\% + z_\alpha \cdot \sigma_{spread})")
-    st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\frac{(1+T)(1+2T)}{6T}}}")
+    if model:
+        model.render_formulas()
+    else:
+        st.latex(r"LC = \frac{1}{2}\,|PV|\,\cdot\,s\%")
+        st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\frac{(1+T)(1+2T)}{6T}}}")
 
     st.subheader("LC по инструментам")
     st.dataframe(
