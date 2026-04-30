@@ -14,6 +14,7 @@ from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
 from ui.common.components import render_export_download, render_report_toggle
 from ui.portfolio_common.ivar_cvar_section import render_ivar_cvar_section
+from ui.portfolio_common.pnl_analysis import render_pnl_analysis
 
 
 render_report_sidebar()
@@ -293,6 +294,11 @@ fig_pnl.add_vline(
 )
 fig_pnl.update_layout(xaxis_title="Порядковый номер", yaxis_title="PnL", template="plotly_white", hovermode="x unified")
 st.plotly_chart(fig_pnl, width="stretch")
+
+st.divider()
+
+portfolio_pnl_dated = pnl_matrix.sum(axis=1).sort_index()
+render_pnl_analysis(portfolio_pnl_dated, "Портфель")
 
 st.divider()
 
