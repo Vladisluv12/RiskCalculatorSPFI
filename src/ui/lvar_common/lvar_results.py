@@ -77,8 +77,10 @@ def render_lvar_results(res: dict) -> None:
     st.subheader("LC по инструментам")
     st.dataframe(
         res["instrument_lc"].style.format({
-            "Номинал": "{:,.0f}", "s% adj": "{:.4%}",
-            "LC (normal)": "{:.4f}", "LC (stressed)": "{:.4f}",
+            "Номинал": "{:,.0f}",
+            "s (adj)": "{:.4g}",
+            "LC (normal)": "{:,.2f}",
+            "LC (stressed)": "{:,.2f}",
         }),
         width="stretch",
     )
