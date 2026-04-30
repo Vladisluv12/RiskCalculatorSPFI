@@ -13,6 +13,8 @@ from instruments.FXSwap import CurrencySwapContract
 from instruments.IRSwap import InterestRateSwap
 from ui.common.sidebar import render_report_sidebar
 from ui.common.components import render_export_download, render_report_toggle
+from compute.risk.var import _get_pnl_series as _get_dated_pnl
+from ui.portfolio_common.pnl_analysis import render_pnl_analysis
 render_report_sidebar()
 
 st.title("📉 Анализ рисков (VaR)")
@@ -147,6 +149,11 @@ if selected_id:
                 )
 
                 st.plotly_chart(fig, width="stretch")
+
+                st.divider()
+                dated_pnl = _get_dated_pnl(data_provider, var_instrument, calc_start, calc_end, window)
+                dated_pnl_scaled = (dated_pnl / scale_span) * scale_horizon
+                render_pnl_analysis(dated_pnl_scaled, selected_id)
             else:
                 st.latex(r"VaR = \left|\left(-\mu + z_{\alpha}\sigma\right)\sqrt{horizon}\right|")
                 raw_var = var.parametric(
