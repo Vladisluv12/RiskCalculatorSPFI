@@ -89,12 +89,15 @@ def estimate_irs_spread_series(
     direction: Direction,
     params: LiquidityParams,
     instrument_id: str = "",
+    notional: float = 0.0,
+    currency: str = "",
 ) -> pd.Series:
     """
     Series of bid-ask spread in basis points for an IRS.
 
     spread_bps(t) = max(k_irs × σ_rate_bps(t) × √tenor_years, floor_spread_bps)
     dir_adj        = (1 + α) if BUY, (1 − α) if SELL
+    size_adj       = 1 + 0.5 × (notional / ADV)  if ADV provided, else 1.0
 
     If instrument_id is in params.observed_spreads_irs, that value is returned
     directly (scalar float or pd.Series), bypassing the vol model.
@@ -115,7 +118,9 @@ def estimate_irs_spread_series(
         params.floor_spread_bps,
     )
     dir_adj = (1.0 + params.alpha) if direction == Direction.BUY else (1.0 - params.alpha)
-    return base_spread * dir_adj
+    adv = params.avg_daily_volume.get(currency) if currency else None
+    size_adj = 1.0 + 0.5 * (notional / adv) if adv and notional else 1.0
+    return base_spread * dir_adj * size_adj
 
 
 def compute_irs_lc(

@@ -57,7 +57,7 @@ class ParametricLiquidityModel(LiquidityModel):
     def render_description(self) -> None:
         st.markdown(r"""
 Спред bid/ask моделируется как случайная величина, зависящая от волатильности инструмента.
-Liquidity cost — стоимость закрытия позиции через рынок.
+Liquidity cost - стоимость закрытия позиции через рынок.
 
 ---
 
@@ -67,9 +67,9 @@ Liquidity cost — стоимость закрытия позиции через
 
 **Спред (IRS)**: $s_{bps}(t) = \max\!\bigl(k_{irs} \cdot \sigma_{rate,bps}(t) \cdot \sqrt{\text{tenor}},\; s_{\text{floor,bps}}\bigr)$
 
-**LC (FX, руб.)**: $LC = \tfrac{1}{2}|PV| \cdot s\%$; $\quad LC_\text{stressed} = \tfrac{1}{2}|PV|(s\% + z_\alpha\,\sigma_{s\%})$
+**LC (FX)**: $LC = \tfrac{1}{2}|PV| \cdot s\%$; $\quad LC_\text{stressed} = \tfrac{1}{2}|PV|(s\% + z_\alpha\,\sigma_{s\%})$
 
-**LC (IRS, руб.)**: $LC = \tfrac{1}{2}\cdot DV01 \cdot s_{bps}$; $\quad LC_\text{stressed} = \tfrac{1}{2}\cdot DV01\cdot(s_{bps}+z_\alpha\,\sigma_{s_{bps}})$
+**LC (IRS)**: $LC = \tfrac{1}{2}\cdot DV01 \cdot s_{bps}$; $\quad LC_\text{stressed} = \tfrac{1}{2}\cdot DV01\cdot(s_{bps}+z_\alpha\,\sigma_{s_{bps}})$
 
 **LVaR**: $LVaR_T = \dfrac{VaR + LC}{\sqrt{(1+T)(1+2T)/6T}}$
         """)
@@ -249,14 +249,10 @@ class CsvLiquidityModel(LiquidityModel):
         pass  # No expander shown for CSV mode
 
     def render_formulas(self) -> None:
-        st.markdown(
-            "Спреды получены из исторических котировок "
-            "(`data/liquidity/` — батч-файлы + `index.csv`)."
-        )
         st.latex(r"LC^{FX} = \frac{1}{2}\,|PV|\cdot s\%,\quad"
-                 r"s\% = \frac{ask - bid}{mid}")
+                 r" s\% = \frac{ask - bid}{mid}")
         st.latex(r"LC^{IRS} = \frac{1}{2}\,DV01\cdot s_{bps}\quad(\text{руб.}),\quad"
-                 r"s_{bps} = (ask - bid)\times 10^4")
+                 r" s_{bps} = (ask - bid)\times 10^4")
         st.latex(r"LC_\text{stressed} = \frac{1}{2}\,(\bar{s} + z_\alpha\,\sigma_s)")
         st.latex(r"LVaR_T = \frac{VaR + LC}{\sqrt{\dfrac{(1+T)(1+2T)}{6T}}}")
 
@@ -274,8 +270,24 @@ class CsvLiquidityModel(LiquidityModel):
             "Папка с данными ликвидности",
             value=default_liq_dir,
             key="lvar_liq_dir",
-            help="Путь к папке, содержащей index.csv и батч-файлы fx_*.csv / irs_*.csv.",
+            help="Путь к папке, содержащей index.csv и файлы fx_*.csv / irs_*.csv.",
         )
+
+        st.subheader("Средний дневной объём торгов (ADV)")
+        st.caption("0, чтобы не учитывать поправку на размер позиции.")
+        unique_pairs = sorted({
+            inst.currency.value if isinstance(inst, InterestRateSwap) else inst.currency_pair.value
+            for inst in supported
+        })
+        adv_cols = st.columns(max(len(unique_pairs), 1))
+        raw_adv: dict = {}
+        for i, pair in enumerate(unique_pairs):
+            with adv_cols[i]:
+                raw_adv[pair] = st.number_input(
+                    pair, min_value=0.0, value=0.0, step=1_000_000.0, format="%.0f",
+                    key=f"lvar_csv_adv_{pair}",
+                )
+        avg_daily_volume = {k: v for k, v in raw_adv.items() if v > 0}
 
         index_path = os.path.join(liq_dir, "index.csv")
         if not os.path.exists(index_path):
@@ -284,12 +296,12 @@ class CsvLiquidityModel(LiquidityModel):
                 "Запустите `python utils/split_liquidity.py` для генерации батч-файлов."
             )
             st.session_state.pop("lvar_liquidity_df", None)
-            return LiquidityModelParams(T=int(T))
+            return LiquidityModelParams(T=int(T), avg_daily_volume=avg_daily_volume)
 
         try:
             liq_df = load_for_portfolio(liq_dir, supported)
             if liq_df.empty:
-                st.info("Ни один батч-файл не содержит котировок для инструментов портфеля.")
+                st.info("Ни один файл не содержит котировок для инструментов портфеля.")
                 st.session_state.pop("lvar_liquidity_df", None)
             else:
                 st.session_state["lvar_liquidity_df"] = liq_df
@@ -300,7 +312,7 @@ class CsvLiquidityModel(LiquidityModel):
             with st.expander("Детали ошибки"):
                 st.code(traceback.format_exc())
 
-        return LiquidityModelParams(T=int(T))
+        return LiquidityModelParams(T=int(T), avg_daily_volume=avg_daily_volume)
 
 
 # ---------------------------------------------------------------------------

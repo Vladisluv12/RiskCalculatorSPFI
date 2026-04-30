@@ -82,6 +82,8 @@ def portfolio_lvar(
                 direction=inst.direction,
                 params=params,
                 instrument_id=inst.instrument_id,
+                notional=float(inst.notional),
+                currency=inst.currency.value,
             )
 
             lc = compute_irs_lc(dv01=dv01, spread_series_bps=spread_series_bps, z_alpha=z_alpha)

@@ -32,7 +32,7 @@ def build_liquidity_params(
         return LiquidityParams(
             observed_spreads=build_observed_spreads(liquidity_df, lvar_instruments, calc_end),
             observed_spreads_irs=build_observed_spreads_irs(liquidity_df, lvar_instruments, calc_end),
-            avg_daily_volume={},
+            avg_daily_volume=avg_daily_volume,
             k_irs=k_irs,
             floor_spread_bps=floor_spread_bps,
         )
