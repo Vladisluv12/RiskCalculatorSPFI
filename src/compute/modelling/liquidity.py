@@ -50,8 +50,13 @@ def estimate_spread_series(
         val = params.observed_spreads[instrument_id]
         if isinstance(val, pd.Series):
             combined = val.reindex(val.index.union(fx_returns.index)).sort_index().ffill().bfill()
-            return combined.reindex(fx_returns.index).fillna(params.floor_spread)
-        return pd.Series(float(val), index=fx_returns.index)
+            base = combined.reindex(fx_returns.index).fillna(params.floor_spread)
+        else:
+            base = pd.Series(float(val), index=fx_returns.index)
+        dir_adj = (1.0 + params.alpha) if direction == Direction.BUY else (1.0 - params.alpha)
+        adv = params.avg_daily_volume.get(currency_pair)
+        size_adj = 1.0 + 0.5 * (notional / adv) if adv else 1.0
+        return base * dir_adj * size_adj
     sigma_ewma = estimate_ewma_vol(fx_returns, params.lambda_)
     base_spread = np.maximum(
         params.k * sigma_ewma * np.sqrt(max(tenor_years, 1 / 365)),
@@ -109,8 +114,13 @@ def estimate_irs_spread_series(
                 val.reindex(val.index.union(rate_changes_bps.index))
                 .sort_index().ffill().bfill()
             )
-            return combined.reindex(rate_changes_bps.index).fillna(params.floor_spread_bps)
-        return pd.Series(float(val), index=rate_changes_bps.index)
+            base = combined.reindex(rate_changes_bps.index).fillna(params.floor_spread_bps)
+        else:
+            base = pd.Series(float(val), index=rate_changes_bps.index)
+        dir_adj = (1.0 + params.alpha) if direction == Direction.BUY else (1.0 - params.alpha)
+        adv = params.avg_daily_volume.get(currency) if currency else None
+        size_adj = 1.0 + 0.5 * (notional / adv) if adv and notional else 1.0
+        return base * dir_adj * size_adj
 
     sigma_bps = estimate_ewma_vol(rate_changes_bps, params.lambda_)
     base_spread = np.maximum(

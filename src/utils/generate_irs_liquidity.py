@@ -47,7 +47,7 @@ def _load_fixing(path: str) -> pd.Series:
     df[val_col] = pd.to_numeric(df[val_col].astype(str).str.replace(",", "."), errors="coerce")
     series = df.dropna().set_index(date_col)[val_col].sort_index()
     series = series[series != 0]  # drop zero fixings — they yield mid=0 → spread_pct=Inf
-    return series / 100  # percent → fraction  # percent → fraction
+    return series  # already stored as fractions (0.1444 = 14.44%)
 
 
 def _ewma_vol_bps(rate_series: pd.Series) -> pd.Series:

@@ -40,7 +40,7 @@ row1_col1, row1_col2, row1_col3 = st.columns(3)
 with row1_col1:
     type_of_var = st.selectbox("Метод расчета VaR", options=["Исторический", "Параметрический"], index=0)
 with row1_col2:
-    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.99], index=1)
+    conf_level = st.selectbox("Доверительный уровень", options=[0.95, 0.975, 0.99], index=2)
 with row1_col3:
     horizon = st.number_input("Горизонт прогноза (дней)", min_value=1, max_value=30, value=5)
 

@@ -1,0 +1,63 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      streamlit1:
+        condition: service_healthy
+      streamlit2:
+        condition: service_healthy
+      streamlit3:
+        condition: service_healthy
+    restart: unless-stopped
+
+  streamlit1:
+    build: .
+    volumes:
+      - ./src/data/currency:/app/src/data/currency:ro
+      - ./src/data/curves:/app/src/data/curves:ro
+      - ./src/data/fixings:/app/src/data/fixings:ro
+      - ./src/data/ois_curves:/app/src/data/ois_curves:ro
+      - ./src/data/ir:/app/src/data/ir:ro
+      - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  streamlit2:
+    build: .
+    volumes:
+      - ./src/data/currency:/app/src/data/currency:ro
+      - ./src/data/curves:/app/src/data/curves:ro
+      - ./src/data/fixings:/app/src/data/fixings:ro
+      - ./src/data/ois_curves:/app/src/data/ois_curves:ro
+      - ./src/data/ir:/app/src/data/ir:ro
+      - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  streamlit3:
+    build: .
+    volumes:
+      - ./src/data/currency:/app/src/data/currency:ro
+      - ./src/data/curves:/app/src/data/curves:ro
+      - ./src/data/fixings:/app/src/data/fixings:ro
+      - ./src/data/ois_curves:/app/src/data/ois_curves:ro
+      - ./src/data/ir:/app/src/data/ir:ro
+      - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

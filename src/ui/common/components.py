@@ -16,7 +16,7 @@ def render_var_params(key_prefix: str = "") -> tuple:
     with row1_col2:
         conf_level = st.selectbox(
             "Доверительный уровень",
-            options=[0.95, 0.99],
+            options=[0.95, 0.975, 0.99],
             index=0,
             key=f"{key_prefix}conf_level" if key_prefix else None,
         )

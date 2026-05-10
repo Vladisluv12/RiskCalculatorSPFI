@@ -4,10 +4,14 @@ __pycache__/
 .serena/
 TZGeneration/
 TPGeneration/
+PMIGeneration/
+POGeneration/
+PZGeneration/
 KT1/
 KT2/
 docs/
-data/
+gost_stuff/
+final_docs/
 
 .mcp.json
 try_get.py
