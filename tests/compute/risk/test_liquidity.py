@@ -228,7 +228,8 @@ def test_estimate_irs_spread_series_buy_gt_sell():
 
 
 def test_estimate_irs_spread_series_override_scalar():
-    params = LiquidityParams(observed_spreads_irs={'IRS1': 10.0})
+    # alpha=0 → отключаем direction-adjustment, чтобы override возвращался «как есть».
+    params = LiquidityParams(observed_spreads_irs={'IRS1': 10.0}, alpha=0.0)
     rate_changes = pd.Series([1.0] * 10)
     result = estimate_irs_spread_series(
         rate_changes_bps=rate_changes, tenor_years=5.0,
@@ -306,7 +307,7 @@ def test_portfolio_lvar_irs_lc_nonzero():
 
 
 def test_portfolio_lvar_irs_lc_override():
-    """observed_spreads_irs override должен подставлять заданный спред."""
+    """observed_spreads_irs override должен подставлять заданный спред (с alpha=0 — без direction-adjustment)."""
     rng = np.random.default_rng(9)
     n = 50
     dates = pd.date_range('2023-01-01', periods=n, freq='B')
@@ -326,6 +327,7 @@ def test_portfolio_lvar_irs_lc_override():
     params = LiquidityParams(
         k_irs=3.0, floor_spread_bps=2.0,
         observed_spreads_irs={'IRS1': 8.0},
+        alpha=0.0,
     )
 
     with patch('compute.risk.lvar._get_pv_series', return_value=mock_pv):

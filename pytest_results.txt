@@ -1,0 +1,160 @@
+================================================================================
+ПРОТОКОЛ АВТОМАТИЗИРОВАННОГО ТЕСТИРОВАНИЯ
+Программа: «Разработка риск-калькулятора для рынка СПФИ МБ»
+================================================================================
+
+Команда запуска:
+    pytest tests/ -v --tb=short
+
+Окружение:
+    Python 3.14, pytest, pandas, numpy, scipy, openpyxl
+
+Описание набора тестов (с привязкой к функциональным требованиям п. 4.1.1 ТЗ):
+
+  tests/compute/pricers/test_irs_pricer.py    (7 тестов)
+    └─ ф. 1.2: ценообразование IRS, корректность PV-серий, ATM-свопы
+
+  tests/compute/pricers/test_swap_utils.py    (27 тестов)
+    └─ ф. 1.2: расписания платежей, конвенции дней (Act/360, Act/365, 30E/360,
+                Act/Act), бизнес-офсеты, DV01, IBOR-форварды с базисом
+
+  tests/compute/risk/test_cvar_ivar.py        (7 тестов)
+    └─ ф. 2.3, 2.4: Component VaR, Incremental VaR
+
+  tests/compute/risk/test_liquidity.py        (19 тестов)
+    └─ ф. 3.1–3.4: EWMA-волатильность, спреды, LC, LVaR
+                    (нормальный/стрессовый, T-фактор)
+
+  tests/iolib/test_portfolio_io.py            (8 тестов)
+    └─ ф. 1.3: импорт портфеля (JSON, YAML, CSV, Excel);
+                roundtrip + валидация (test_import_skips_invalid_rows)
+
+  tests/iolib/test_report_builder.py          (4 теста)
+    └─ ф. 4.6: формирование PDF-отчёта
+
+  tests/iolib/test_results_exporter.py        (4 теста)
+    └─ ф. 4.4: экспорт результатов в JSON / YAML / CSV / Excel
+
+  tests/iolib/test_serializers.py             (12 тестов)
+    └─ ф. 4.4: сериализация (roundtrip, расширения, MIME-типы)
+
+  tests/utils/test_data_provider_fixings.py   (15 тестов)
+    └─ ф. 1.5: загрузка fixings с диска (RUONIA, ESTR, SOFR, EURIBOR,
+                RUSFAR, KeyRate), фильтрация по датам, обработка ошибок
+
+ИТОГО: 103 автоматизированных теста.
+
+────────────────────────────────────────────────────────────────────────────────
+ВЫВОД ВЫПОЛНЕНИЯ:
+────────────────────────────────────────────────────────────────────────────────
+============================= test session starts ==============================
+tests/compute/pricers/test_irs_pricer.py::test_calculate_pv_returns_dataframe PASSED [  0%]
+tests/compute/pricers/test_irs_pricer.py::test_calculate_pv_non_empty PASSED [  1%]
+tests/compute/pricers/test_irs_pricer.py::test_calculate_pv_index_within_range PASSED [  2%]
+tests/compute/pricers/test_irs_pricer.py::test_payer_receiver_are_opposite_signs PASSED [  3%]
+tests/compute/pricers/test_irs_pricer.py::test_quarterly_produces_non_empty_result PASSED [  4%]
+tests/compute/pricers/test_irs_pricer.py::test_euribor_swap_returns_nonempty_result PASSED [  5%]
+tests/compute/pricers/test_irs_pricer.py::test_euribor_atm_swap_near_zero_npv PASSED [  6%]
+tests/compute/pricers/test_swap_utils.py::test_end_of_period_returns_single_end_date PASSED [  7%]
+tests/compute/pricers/test_swap_utils.py::test_quarterly_schedule_four_dates PASSED [  8%]
+tests/compute/pricers/test_swap_utils.py::test_annually_schedule_three_years PASSED [  9%]
+tests/compute/pricers/test_swap_utils.py::test_semi_annually_schedule PASSED [ 10%]
+tests/compute/pricers/test_swap_utils.py::test_monthly_schedule_twelve_dates PASSED [ 11%]
+tests/compute/pricers/test_swap_utils.py::test_last_date_is_always_end PASSED [ 12%]
+tests/compute/pricers/test_swap_utils.py::test_act_360_ninety_one_days PASSED [ 13%]
+tests/compute/pricers/test_swap_utils.py::test_act_365_ninety_one_days PASSED [ 14%]
+tests/compute/pricers/test_swap_utils.py::test_30e_360_full_year PASSED  [ 15%]
+tests/compute/pricers/test_swap_utils.py::test_act_act_full_leap_year PASSED [ 16%]
+tests/compute/pricers/test_swap_utils.py::test_act_act_spans_two_years PASSED [ 17%]
+tests/compute/pricers/test_swap_utils.py::test_offset_none_leaves_date_unchanged PASSED [ 18%]
+tests/compute/pricers/test_swap_utils.py::test_offset_one_day_advances_by_one_business_day PASSED [ 19%]
+tests/compute/pricers/test_swap_utils.py::test_offset_one_day_skips_weekend PASSED [ 20%]
+tests/compute/pricers/test_swap_utils.py::test_offset_two_days_advances_by_two_business_days PASSED [ 21%]
+tests/compute/pricers/test_swap_utils.py::test_offset_default_is_none_backward_compat PASSED [ 22%]
+tests/compute/pricers/test_swap_utils.py::test_offset_none_leaves_weekend_date_unchanged PASSED [ 23%]
+tests/compute/pricers/test_swap_utils.py::test_offset_one_day_from_saturday_gives_monday PASSED [ 24%]
+tests/compute/pricers/test_swap_utils.py::test_offset_two_days_from_saturday_gives_tuesday PASSED [ 25%]
+tests/compute/pricers/test_swap_utils.py::test_ibor_forward_with_basis_zero_basis PASSED [ 26%]
+tests/compute/pricers/test_swap_utils.py::test_ibor_forward_with_basis_positive_basis_shifts_all_forwards PASSED [ 27%]
+tests/compute/pricers/test_swap_utils.py::test_ibor_forward_with_basis_rolling_smooths_spike PASSED [ 28%]
+tests/compute/pricers/test_swap_utils.py::test_ibor_forward_with_basis_zero_dcf_raises PASSED [ 29%]
+tests/compute/pricers/test_swap_utils.py::test_irs_dv01_positive PASSED  [ 30%]
+tests/compute/pricers/test_swap_utils.py::test_irs_dv01_increases_with_tenor PASSED [ 31%]
+tests/compute/pricers/test_swap_utils.py::test_irs_dv01_scales_with_notional PASSED [ 32%]
+tests/compute/pricers/test_swap_utils.py::test_irs_dv01_zero_past_maturity PASSED [ 33%]
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_returns_all_keys PASSED [ 33%]
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_values_are_floats PASSED [ 34%]
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_hedging_instrument_is_negative PASSED [ 35%]
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_sum_approximately_equals_portfolio_var PASSED [ 36%]
+tests/compute/risk/test_cvar_ivar.py::test_portfolio_ivar_two_instruments PASSED [ 37%]
+tests/compute/risk/test_cvar_ivar.py::test_portfolio_ivar_single_instrument_gives_full_var PASSED [ 38%]
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_raises_on_missing_var_key PASSED [ 39%]
+tests/compute/risk/test_liquidity.py::test_ewma_vol_positive PASSED      [ 40%]
+tests/compute/risk/test_liquidity.py::test_ewma_vol_low_lambda_reacts_faster PASSED [ 41%]
+tests/compute/risk/test_liquidity.py::test_liquidity_params_defaults PASSED [ 42%]
+tests/compute/risk/test_liquidity.py::test_spread_series_floor PASSED    [ 43%]
+tests/compute/risk/test_liquidity.py::test_spread_series_buy_gt_sell PASSED [ 44%]
+tests/compute/risk/test_liquidity.py::test_spread_series_size_adj PASSED [ 45%]
+tests/compute/risk/test_liquidity.py::test_compute_lc_normal_formula PASSED [ 46%]
+tests/compute/risk/test_liquidity.py::test_compute_lc_stressed_gt_normal PASSED [ 47%]
+tests/compute/risk/test_liquidity.py::test_compute_lc_negative_pv PASSED [ 48%]
+tests/compute/risk/test_liquidity.py::test_portfolio_lvar_t1_factor_is_one PASSED [ 49%]
+tests/compute/risk/test_liquidity.py::test_portfolio_lvar_t5_reduces_lvar PASSED [ 50%]
+tests/compute/risk/test_liquidity.py::test_liquidity_params_irs_defaults PASSED [ 51%]
+tests/compute/risk/test_liquidity.py::test_compute_irs_lc_normal_formula PASSED [ 52%]
+tests/compute/risk/test_liquidity.py::test_compute_irs_lc_stressed_formula PASSED [ 53%]
+tests/compute/risk/test_liquidity.py::test_estimate_irs_spread_series_floor PASSED [ 54%]
+tests/compute/risk/test_liquidity.py::test_estimate_irs_spread_series_buy_gt_sell PASSED [ 55%]
+tests/compute/risk/test_liquidity.py::test_estimate_irs_spread_series_override_scalar PASSED [ 56%]
+tests/compute/risk/test_liquidity.py::test_portfolio_lvar_irs_lc_nonzero PASSED [ 57%]
+tests/compute/risk/test_liquidity.py::test_portfolio_lvar_irs_lc_override PASSED [ 58%]
+tests/iolib/test_portfolio_io.py::test_roundtrip_json PASSED             [ 59%]
+tests/iolib/test_portfolio_io.py::test_roundtrip_yaml PASSED             [ 60%]
+tests/iolib/test_portfolio_io.py::test_roundtrip_csv PASSED              [ 61%]
+tests/iolib/test_portfolio_io.py::test_roundtrip_excel PASSED            [ 62%]
+tests/iolib/test_portfolio_io.py::test_import_skips_invalid_rows PASSED  [ 63%]
+tests/iolib/test_portfolio_io.py::test_irs_export_produces_bytes PASSED  [ 64%]
+tests/iolib/test_portfolio_io.py::test_irs_roundtrip_json PASSED         [ 65%]
+tests/iolib/test_portfolio_io.py::test_mixed_portfolio_roundtrip PASSED  [ 66%]
+tests/iolib/test_report_builder.py::test_add_and_has_section PASSED      [ 66%]
+tests/iolib/test_report_builder.py::test_remove_section PASSED           [ 67%]
+tests/iolib/test_report_builder.py::test_build_returns_pdf_bytes PASSED  [ 68%]
+tests/iolib/test_report_builder.py::test_build_empty_returns_pdf PASSED  [ 69%]
+tests/iolib/test_results_exporter.py::test_export_json_returns_bytes PASSED [ 70%]
+tests/iolib/test_results_exporter.py::test_export_yaml_returns_bytes PASSED [ 71%]
+tests/iolib/test_results_exporter.py::test_export_csv_returns_main_dataframe PASSED [ 72%]
+tests/iolib/test_results_exporter.py::test_export_excel_returns_bytes PASSED [ 73%]
+tests/iolib/test_serializers.py::test_json_serialize_roundtrip PASSED    [ 74%]
+tests/iolib/test_serializers.py::test_json_file_extension PASSED         [ 75%]
+tests/iolib/test_serializers.py::test_json_mime_type PASSED              [ 76%]
+tests/iolib/test_serializers.py::test_yaml_roundtrip PASSED              [ 77%]
+tests/iolib/test_serializers.py::test_yaml_file_extension PASSED         [ 78%]
+tests/iolib/test_serializers.py::test_csv_roundtrip_list_of_dicts PASSED [ 79%]
+tests/iolib/test_serializers.py::test_csv_serialize_dataframe PASSED     [ 80%]
+tests/iolib/test_serializers.py::test_csv_file_extension PASSED          [ 81%]
+tests/iolib/test_serializers.py::test_excel_roundtrip_list_of_dicts PASSED [ 82%]
+tests/iolib/test_serializers.py::test_excel_file_extension PASSED        [ 83%]
+tests/iolib/test_serializers.py::test_excel_mime_type PASSED             [ 84%]
+tests/utils/test_data_provider_fixings.py::test_get_fixing_data_returns_dataframe PASSED [ 85%]
+tests/utils/test_data_provider_fixings.py::test_get_fixing_data_index_is_datetime PASSED [ 86%]
+tests/utils/test_data_provider_fixings.py::test_get_fixing_data_filtered_by_date PASSED [ 87%]
+tests/utils/test_data_provider_fixings.py::test_get_fixing_data_sofr PASSED [ 88%]
+tests/utils/test_data_provider_fixings.py::test_get_fixing_data_missing_file_raises PASSED [ 89%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUONIA_AVG] PASSED [ 90%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUONIA_COMP] PASSED [ 91%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.ESTR_COMP] PASSED [ 92%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.SOFR_COMP] PASSED [ 93%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.EURIBOR_EUR_1M] PASSED [ 94%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.EURIBOR_EUR_3M] PASSED [ 95%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.EURIBOR_EUR_6M] PASSED [ 96%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUSFAR_RUB_3M] PASSED [ 97%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUSFAR_RUB_ON] PASSED [ 98%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUSFARCNY_COMP] PASSED [ 99%]
+tests/utils/test_data_provider_fixings.py::test_fixing_file_exists_on_disk[FloatingIndex.RUB_KEY_RATE] PASSED [100%]
+=============================== warnings summary ===============================
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_hedging_instrument_is_negative
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_hedging_instrument_is_negative
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_hedging_instrument_is_negative
+tests/compute/risk/test_cvar_ivar.py::test_compute_cvar_hedging_instrument_is_negative
+======================= 103 passed, 4 warnings in 3.45s ========================
+

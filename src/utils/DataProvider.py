@@ -96,7 +96,7 @@ class DataProvider:
         Загружает данные по кривой и возвращает DataFrame.
         """
         curve_filename = self._get_curve_filename(currency_name)
-        filepath = os.path.join(self.filepath, f'curves', curve_filename + ".csv")
+        filepath = os.path.join(self.filepath, 'curves', curve_filename)
 
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Файл кривой для {currency_name} не найден.")

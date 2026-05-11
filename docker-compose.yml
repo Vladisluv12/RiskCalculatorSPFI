@@ -16,6 +16,8 @@ services:
 
   streamlit1:
     build: .
+    environment:
+      DATA_DIR: /app/src/data
     volumes:
       - ./src/data/currency:/app/src/data/currency:ro
       - ./src/data/curves:/app/src/data/curves:ro
@@ -24,14 +26,17 @@ services:
       - ./src/data/ir:/app/src/data/ir:ro
       - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').status==200 else 1)"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   streamlit2:
     build: .
+    environment:
+      DATA_DIR: /app/src/data
     volumes:
       - ./src/data/currency:/app/src/data/currency:ro
       - ./src/data/curves:/app/src/data/curves:ro
@@ -40,14 +45,17 @@ services:
       - ./src/data/ir:/app/src/data/ir:ro
       - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').status==200 else 1)"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   streamlit3:
     build: .
+    environment:
+      DATA_DIR: /app/src/data
     volumes:
       - ./src/data/currency:/app/src/data/currency:ro
       - ./src/data/curves:/app/src/data/curves:ro
@@ -56,8 +64,9 @@ services:
       - ./src/data/ir:/app/src/data/ir:ro
       - ./src/data/sample_portfolios:/app/src/data/sample_portfolios:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').status==200 else 1)"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
