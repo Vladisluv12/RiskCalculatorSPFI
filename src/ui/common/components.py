@@ -38,6 +38,13 @@ def render_var_params(key_prefix: str = "") -> tuple:
         key=f"{key_prefix}window" if key_prefix else None,
     )
 
+    if horizon > 10:
+        st.warning(
+            f"Горизонт прогноза {horizon} дн. выходит за пределы стандартного "
+            "регуляторного диапазона (Basel III: 10 дней, МосБиржа: 1 день). "
+            "Используйте значение > 10 только для внутренней аналитики."
+        )
+
     return type_of_var, conf_level, horizon, window
 
 

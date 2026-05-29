@@ -71,6 +71,18 @@ if isinstance(model, ParametricLiquidityModel):
 # Параметры ликвидности
 p = model.render_inputs(supported)
 
+_short_expiry = [
+    inst for inst in supported
+    if (inst.end_date.date() - calc_end_date).days < p.T
+]
+if _short_expiry:
+    _names = ", ".join(inst.instrument_id for inst in _short_expiry)
+    st.warning(
+        f"Инструмент(ы) **{_names}** экспирируются менее чем через {p.T} дн. "
+        f"от даты оценки — раньше, чем истекает T-фактор ликвидации. "
+        "Оценка ликвидационных затрат может быть завышена."
+    )
+
 st.divider()
 
 # Подготовка инструментов

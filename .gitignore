@@ -12,9 +12,14 @@ KT2/
 docs/
 gost_stuff/
 final_docs/
+instrument_specs/
 
 .mcp.json
 try_get.py
 .worktrees/
 .pytest_cache/
 .claude/
+.tex_cache/
+.mermaid_dataflow.mmd
+build_presentation.py
+presentation.pptx

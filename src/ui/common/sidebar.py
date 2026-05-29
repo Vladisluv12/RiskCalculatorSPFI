@@ -4,6 +4,7 @@ from instruments.enums import Direction, CurrencyPair, Currency, DayCountConvent
 from instruments.FXForward import CurrencyForwardContract
 from instruments.FXSwap import CurrencySwapContract
 from instruments.IRSwap import InterestRateSwap
+from utils.validate import validate
 
 
 _INDEX_BY_CURRENCY: dict[str, list[FloatingIndex]] = {
@@ -70,7 +71,27 @@ def render_forward_form():
     start_d = default_date
     end_d = st.date_input('Дата платежа', value=default_date, key='fwd_end_date')
     submitted = st.button('Добавить в портфель', width='stretch', key='fwd_submit')
-    return CurrencyForwardContract(instrument_id=inst_id + ' ' + pair + f' {(end_d - default_date).days}D', notional=notional, start_date=datetime.combine(start_d, datetime.min.time()), end_date=datetime.combine(end_d, datetime.min.time()), currency_pair=CurrencyPair(pair), base_currency=pair.split('/')[0], quote_currency=pair.split('/')[1], direction=Direction.BUY if direction == 'Buy' else Direction.SELL, forward_rate=rate) if submitted else None
+    if not submitted:
+        return None
+    instrument = CurrencyForwardContract(
+        instrument_id=inst_id + ' ' + pair + f' {(end_d - default_date).days}D',
+        notional=notional,
+        start_date=datetime.combine(start_d, datetime.min.time()),
+        end_date=datetime.combine(end_d, datetime.min.time()),
+        currency_pair=CurrencyPair(pair),
+        base_currency=pair.split('/')[0],
+        quote_currency=pair.split('/')[1],
+        direction=Direction.BUY if direction == 'Buy' else Direction.SELL,
+        forward_rate=rate,
+    )
+    val = validate(instrument)
+    for w in val.warnings:
+        st.warning(w)
+    if not val.is_valid:
+        for e in val.errors:
+            st.error(e)
+        return None
+    return instrument
 
 
 def render_swap_form():
@@ -98,8 +119,31 @@ def render_swap_form():
     start_date = col1.date_input('Near leg', value=default_date, key='swap_start')
     end_date = col2.date_input('Far leg', value=default_date, key='swap_end')
     submitted = st.button('Добавить в портфель', width="stretch", key='swap_submit')
-    if submitted:
-        return CurrencySwapContract(instrument_id=f"{inst_id} {pair_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}", notional=fixed_sum, start_date=datetime.combine(start_date, datetime.min.time()), end_date=datetime.combine(end_date, datetime.min.time()), currency_pair=pair, base_currency=base_currency, quote_currency=quote_currency, fixed_sum_currency=base_currency, fixed_sum=fixed_sum, spot_rate=spot_rate, swap_points=swap_points, reverse_rate=reverse_rate, direction=Direction.BUY if direction == 'Buy' else Direction.SELL)
+    if not submitted:
+        return None
+    instrument = CurrencySwapContract(
+        instrument_id=f"{inst_id} {pair_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}",
+        notional=fixed_sum,
+        start_date=datetime.combine(start_date, datetime.min.time()),
+        end_date=datetime.combine(end_date, datetime.min.time()),
+        currency_pair=pair,
+        base_currency=base_currency,
+        quote_currency=quote_currency,
+        fixed_sum_currency=base_currency,
+        fixed_sum=fixed_sum,
+        spot_rate=spot_rate,
+        swap_points=swap_points,
+        reverse_rate=reverse_rate,
+        direction=Direction.BUY if direction == 'Buy' else Direction.SELL,
+    )
+    val = validate(instrument, valuation_date=default_date)
+    for w in val.warnings:
+        st.warning(w)
+    if not val.is_valid:
+        for e in val.errors:
+            st.error(e)
+        return None
+    return instrument
 
 
 def render_irs_form():
@@ -161,26 +205,34 @@ def render_irs_form():
     )
 
     submitted = st.button('Добавить в портфель', width='stretch', key='irs_submit')
-    if submitted:
-        auto_id = f"{inst_id} {currency_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}"
-        return InterestRateSwap(
-            instrument_id=auto_id,
-            notional=notional,
-            direction=Direction.BUY if direction == 'Buy' else Direction.SELL,
-            start_date=datetime.combine(start_date, datetime.min.time()),
-            end_date=datetime.combine(end_date, datetime.min.time()),
-            currency=Currency(currency_str),
-            fixed_rate=fixed_rate / 100.0,
-            fixed_day_count=DayCountConvention(fixed_dc),
-            fixed_payment_timing=PaymentTiming(fixed_timing),
-            fixed_offset_rule=OffsetRule(fixed_offset),
-            floating_index=floating_index,
-            floating_spread=floating_spread,
-            floating_day_count=DayCountConvention(float_dc),
-            floating_payment_timing=PaymentTiming(float_timing),
-            floating_offset_rule=OffsetRule(float_offset),
-        )
-    return None
+    if not submitted:
+        return None
+    auto_id = f"{inst_id} {currency_str} {start_date.strftime('%d%m%y')}-{end_date.strftime('%d%m%y')}"
+    instrument = InterestRateSwap(
+        instrument_id=auto_id,
+        notional=notional,
+        direction=Direction.BUY if direction == 'Buy' else Direction.SELL,
+        start_date=datetime.combine(start_date, datetime.min.time()),
+        end_date=datetime.combine(end_date, datetime.min.time()),
+        currency=Currency(currency_str),
+        fixed_rate=fixed_rate / 100.0,
+        fixed_day_count=DayCountConvention(fixed_dc),
+        fixed_payment_timing=PaymentTiming(fixed_timing),
+        fixed_offset_rule=OffsetRule(fixed_offset),
+        floating_index=floating_index,
+        floating_spread=floating_spread,
+        floating_day_count=DayCountConvention(float_dc),
+        floating_payment_timing=PaymentTiming(float_timing),
+        floating_offset_rule=OffsetRule(float_offset),
+    )
+    val = validate(instrument, valuation_date=default_date)
+    for w in val.warnings:
+        st.warning(w)
+    if not val.is_valid:
+        for e in val.errors:
+            st.error(e)
+        return None
+    return instrument
 
 
 def render_report_sidebar() -> None:
